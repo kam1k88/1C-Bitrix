@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "bitrix24": {
+      "command": "python",
+      "args": ["bitrix24/mcp_server_wrapper.py"],
+      "env": {
+        "BITRIX24_MCP_URL": "https://mcp-dev.bitrix24.tech/mcp",
+        "BITRIX24_MCP_TOKEN": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6IjQ4OGY0YWFiLTFiZWUtNGNiNS1hNjYyLTlhZTUxZDkwNGQ1OSJ9.eyJtY3AiOiJhaWFzc2lzdGFudC5iaXRyaXhfbWNwIiwic3ViIjoiNzE2NTk1NzBcL2IyNC42OWE1ODdkYmViOWEwNy42MDc0MTk3MCIsInB1aWQiOjEsImF1ZCI6ImIyNC16MzczdmMuYml0cml4MjQucnUiLCJhZG1pbiI6ZmFsc2UsImV4cCI6MTc3MzMyMDM1NSwiaWF0IjoxNzcyNDU2MzU1LCJpc3MiOiJodHRwczpcL1wvYXV0aDIuYml0cml4MjQubmV0In0.HsMpNfdAC0eXx263Toizerl2rvGPlZjydtW2fjiTT0zaxHsQ9nOzcsb196PfzsoAz-88Q2EGjx6DmnB1wfULcHWjpg1MJI6KR_hwEmjxwTaGBQPjgpDYu4eMrdQcrZUbPPUC4GWLAQDLg9z7f7baM4E_QbNXtQlDUW7PdwUtMmf6xVPUjSK10bKvzAScEfLSTgjuehXa7YkuPyrTUKe_z1nD-5piO57UqYrweX6N6TanWPYMz8Yw7pvC0VYWpiu03b1meIFFV8PUYGjWr0pRd6Pgv1gt7F4rlJBXfpQBBt8I_6Rqj8kH7gtrWtx7KNJoTdjWHNyAFRcsN1fb0-zhiQ",
+        "BITRIX24_DOMAIN": "b24-z373vc.bitrix24.ru"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "bitrix24_get_leads",
+        "bitrix24_get_deals",
+        "bitrix24_get_contacts",
+        "bitrix24_get_companies",
+        "bitrix24_get_users",
+        "bitrix24_get_tasks",
+        "bitrix24_search"
+      ]
+    }
+  }
+}
