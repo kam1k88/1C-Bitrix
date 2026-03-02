@@ -14,9 +14,9 @@
 │   └── mcp_scenarios.py   # MCP-based scenarios
 │
 ├── bitrix24/              # Bitrix24 CRM integration
-│   ├── client.py          # REST API client
-│   ├── js_integration.py  # JS SDK integration
-│   └── mcp_client.py      # MCP protocol client
+│   ├── sdk_client.py      # Official b24pysdk wrapper (recommended)
+│   ├── client.py          # Legacy REST API wrapper
+│   └── mcp_client.py      # MCP protocol client (legacy)
 │
 ├── onec/                  # 1С ERP integration
 │   └── client.py          # HTTP services client
@@ -57,10 +57,10 @@ Business logic layer that orchestrates AI services and integrations:
 - `mcp_scenarios.py` - Natural language automation scenarios
 
 ### bitrix24/
-Three integration approaches:
-- `client.py` - REST API wrapper (basic operations)
-- `js_integration.py` - JS SDK for advanced features
-- `mcp_client.py` - Model Context Protocol for AI-driven operations
+Bitrix24 CRM integration with multiple approaches:
+- `sdk_client.py` - Official b24pysdk wrapper (recommended)
+- `client.py` - Legacy REST API wrapper
+- `mcp_client.py` - Model Context Protocol for AI-driven operations (legacy)
 
 ### onec/
 1С integration via HTTP services:

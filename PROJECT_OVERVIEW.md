@@ -34,15 +34,15 @@
 - **Prompt Engineering** - Оптимизированные промпты для каждой задачи
 
 ### Интеграции
-- **Bitrix24 REST API** - Базовая интеграция с CRM
-- **Bitrix24 JS SDK** - Продвинутые операции (batch, streaming)
-- **Bitrix24 MCP** - Работа через Model Context Protocol
+- **Bitrix24 SDK (b24pysdk)** - Официальный Python SDK от Bitrix24
+- **Bitrix24 REST API** - Базовая интеграция с CRM (legacy)
+- **Bitrix24 MCP** - Работа через Model Context Protocol (legacy)
 - **1С HTTP-сервисы** - Двусторонняя синхронизация данных
 
 ### Backend
 - **Python 3.9+** - Основной язык разработки
 - **FastAPI** - REST API сервер
-- **Node.js** - Для Bitrix24 JS SDK интеграции
+- **b24pysdk** - Официальный Bitrix24 Python SDK
 
 ### DevOps
 - **Docker** - Контейнеризация
@@ -60,9 +60,9 @@ AI Integration Platform
 │   └── Prompt Library (50+ готовых промптов)
 │
 ├── 🔄 Integration Layer
-│   ├── Bitrix24 REST API Client
-│   ├── Bitrix24 JS SDK Integration
-│   ├── Bitrix24 MCP Client
+│   ├── Bitrix24 SDK Client (b24pysdk)
+│   ├── Bitrix24 REST API Client (legacy)
+│   ├── Bitrix24 MCP Client (legacy)
 │   └── 1С HTTP Services Client
 │
 ├── ⚙️ Automation Layer
@@ -164,7 +164,7 @@ result = sync_deal_to_order(deal_id=456)
 ### Для технических специалистов
 1. **Установка и настройка** - Детальная инструкция
 2. **Интеграция с 1С** - Настройка HTTP-сервисов (с кодом на 1С)
-3. **Bitrix24 API** - Работа с REST API, JS SDK, MCP
+3. **Bitrix24 b24pysdk** - Работа с официальным Python SDK
 4. **Продвинутые техники AI** - Prompt engineering, оптимизация
 
 ### Примеры и шаблоны
@@ -304,7 +304,7 @@ result = sync_deal_to_order(deal_id=456)
 
 ### Дополнительные преимущества
 
-✅ **3 способа интеграции** - REST API, JS SDK, MCP
+✅ **Официальный SDK** - b24pysdk от Bitrix24
 ✅ **Масштабируемость** - Готовность к росту нагрузки
 ✅ **Безопасность** - Защита данных и аудит
 ✅ **Документация** - 10+ документов для разных аудиторий

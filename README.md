@@ -2,7 +2,22 @@
 
 > Комплексная система автоматизации бизнес-процессов с использованием AI-инструментов (ChatGPT, Claude) и интеграцией с 1С и Bitrix24 для компаний в сфере продовольствия и FMCG.
 
-## 🚀 Быстрый старт
+## 🎉 Обновление v2.0 - Миграция на b24pysdk
+
+Проект полностью переведен на официальный SDK от Bitrix24 - [b24pysdk](https://github.com/bitrix24/b24pysdk)!
+
+**Новые возможности:**
+- ✅ Официальная поддержка от Bitrix24
+- ✅ Автоматическая пагинация для больших списков
+- ✅ Встроенные batch операции (до 50+ запросов)
+- ✅ Автоматическое обновление OAuth токенов
+- ✅ Retry логика и настраиваемые таймауты
+- ✅ Поддержка API v2 и v3
+- ✅ Типизация и валидация
+
+📖 **Руководство по миграции**: [docs/b24pysdk_migration_guide.md](docs/b24pysdk_migration_guide.md)
+
+## � Быстрый старт
 
 ```bash
 # 1. Установка зависимостей
@@ -12,20 +27,20 @@ pip install -r requirements.txt
 cp .env.example .env
 # Отредактируйте .env и добавьте ваши API ключи
 
-# 3. Тест подключения к Bitrix24 MCP
-python test_mcp_connection.py
+# 3. Запуск примеров SDK
+python examples/sdk_usage_example.py
 
 # 4. Запуск API сервера
 python main.py
 
-# 5. Запуск Telegram ботов
+# 5. Запуск Telegram ботов (опционально)
 python bots/bot_manager.py
 ```
 
 Откройте http://localhost:8000 - система готова к работе!
 
 📖 **Подробная инструкция**: [docs/quick_start_guide.md](docs/quick_start_guide.md)
-📖 **Настройка MCP**: [docs/bitrix24_mcp_setup.md](docs/bitrix24_mcp_setup.md)
+📖 **Примеры использования SDK**: [examples/sdk_usage_example.py](examples/sdk_usage_example.py)
 🤖 **Telegram боты**: [docs/bots_guide.md](docs/bots_guide.md)
 
 ## ✨ Основные возможности
@@ -35,14 +50,15 @@ python bots/bot_manager.py
 - **Генерация КП**: Персонализированные коммерческие предложения за секунды
 - **Анализ запросов**: Определение типа, срочности, категории и настроения клиента
 - **Категоризация**: Автоматическая классификация входящих запросов
+- **Массовая обработка**: Batch анализ всех новых лидов одним запросом
 
-### 🔄 Интеграция с Bitrix24
-- REST API и Webhook интеграция
-- Bitrix24 JS SDK для продвинутых операций
-- **MCP (Model Context Protocol)** - прямая работа через AI
-- Автоматическая обработка новых лидов
-- Массовые операции (batch запросы)
-- Синхронизация данных
+### 🔄 Интеграция с Bitrix24 (b24pysdk)
+- **Webhook аутентификация** - простая настройка за 2 минуты
+- **OAuth 2.0** - для приложений с автообновлением токенов
+- **Batch API** - массовые операции до 50+ запросов
+- **Автоматическая пагинация** - получение всех записей без ограничений
+- **API v2 и v3** - поддержка обеих версий
+- **Retry логика** - автоматические повторы при сбоях
 
 ### 💼 Интеграция с 1С
 - HTTP-сервисы для обмена данными
@@ -87,8 +103,9 @@ python bots/bot_manager.py
 
 ```
 ├── bitrix24/              # Интеграция с Bitrix24
-│   ├── client.py          # REST API клиент
-│   └── js_integration.py  # Bitrix24 JS SDK интеграция
+│   ├── sdk_client.py      # Официальный b24pysdk клиент (рекомендуется)
+│   ├── client.py          # Legacy REST API клиент
+│   └── mcp_client.py      # MCP клиент (legacy)
 ├── onec/                  # Интеграция с 1С
 │   └── client.py          # HTTP-сервисы клиент
 ├── ai_services/           # AI-сервисы
@@ -108,6 +125,31 @@ python bots/bot_manager.py
 └── main.py               # Главный API сервер
 ```
 
+## 🧪 Тестирование и отладка
+
+### Быстрая проверка системы
+```bash
+# Базовая проверка компонентов
+python quick_test.py
+
+# Полная диагностика
+python debug_check.py
+```
+
+### Запуск тестов
+```bash
+# Установка зависимостей для тестирования
+pip install pytest pytest-mock pytest-cov
+
+# Запуск всех тестов
+pytest tests/ -v
+
+# Запуск с покрытием кода
+pytest tests/ --cov=. --cov-report=html
+```
+
+Подробнее: [docs/testing_and_debugging.md](docs/testing_and_debugging.md)
+
 ## 📚 Документация
 
 ### Для пользователей
@@ -117,11 +159,9 @@ python bots/bot_manager.py
 
 ### Для разработчиков
 - [Установка и настройка](docs/setup_guide.md) - Детальная установка
+- [Миграция на b24pysdk](docs/b24pysdk_migration_guide.md) - Руководство по переходу
 - [Интеграция с 1С](docs/integration_1c.md) - Настройка HTTP-сервисов
-- [Настройка Bitrix24](docs/bitrix24_setup.md) - Webhook и автоматизация
-- [Bitrix24 JS SDK](docs/bitrix24_js_sdk_integration.md) - Продвинутая интеграция
-- [Bitrix24 MCP](docs/bitrix24_mcp_integration.md) - Работа через Model Context Protocol
-- [Bitrix24 MCP Setup](docs/bitrix24_mcp_setup.md) - Настройка с вашим JWT токеном
+- [Настройка Bitrix24](docs/bitrix24_setup.md) - Webhook и OAuth
 - [Продвинутые техники AI](docs/ai_prompts_advanced.md) - Prompt engineering
 
 ## 🎯 Примеры использования
@@ -190,14 +230,12 @@ POST /webhook/bitrix/lead
 - **FastAPI** - REST API сервер
 - **OpenAI API** - ChatGPT интеграция
 - **Anthropic API** - Claude интеграция
-- **Bitrix24 REST API** - CRM интеграция
-- **Bitrix24 JS SDK** - Продвинутая интеграция
+- **Bitrix24 SDK (b24pysdk)** - Официальный Python SDK
 - **1С HTTP-сервисы** - ERP интеграция
 
 ## 📋 Требования
 
 - Python 3.9+
-- Node.js 18+ (для Bitrix24 JS SDK)
 - Bitrix24 аккаунт с webhook
 - OpenAI API ключ
 - Anthropic API ключ (опционально)

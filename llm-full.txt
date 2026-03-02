@@ -1,0 +1,5817 @@
+# Get Started
+
+> Quick start guide for working with the SDK for Bitrix24 REST API
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+The SDK for working with Bitrix24 REST API provides a unified interface for interacting with the Bitrix24 API from JavaScript/TypeScript applications. This page will help you quickly get started with the library.
+
+## Choosing the Appropriate Class
+
+Choose a class depending on your usage scenario:
+
+| Scenario | Class | Description |
+| --- | --- | --- |
+| Application embedded in the Bitrix24 interface | `B24Frame` | Automatically available in an iframe, uses the current user's token |
+| Standalone server application with webhook | `B24Hook` | Uses a permanent webhook token for server applications |
+| Standalone server application with OAuth | `B24OAuth` | Uses OAuth 2.0 with token refresh capability |
+
+### For Client Applications (B24Frame)
+
+If you are developing an application that will run inside the Bitrix24 interface:
+
+```ts
+// In an application embedded in Bitrix24
+
+let $b24: undefined | B24Frame
+
+async function getCurrentUser() {
+  if (!$b24) {
+    return
+  }
+  try {
+    const response = await B24Frame.actions.v2.call.make({
+      method: 'user.current',
+      requestId: 'get-current-user'
+    })
+
+    if (response.isSuccess) {
+      const user = response.getData()
+      console.log('Current user:', user)
+      return user
+    } else {
+      console.error('Error:', response.getErrorMessages())
+    }
+  } catch (error) {
+    console.error('Unexpected error:', error)
+  }
+}
+
+// Example of getting a list of contacts
+async function getContacts() {
+  if (!$b24) {
+    return
+  }
+  const response = await B24Frame.actions.v2.callList.make({
+    method: 'crm.contact.list',
+    params: {
+      filter: { '>ID': 0 },
+      select: ['ID', 'NAME', 'LAST_NAME', 'EMAIL']
+    },
+    idKey: 'ID',
+    requestId: 'get-all-contacts'
+  })
+
+  if (response.isSuccess) {
+    return response.getData()
+  }
+  return []
+}
+
+async init() {
+  $b24 = await initializeB24Frame()
+}
+
+await init() 
+```
+
+### For Server Applications with Webhook (B24Hook)
+
+For server applications with permanent access via webhook:
+
+```ts
+import { B24Hook } from '@bitrix24/b24jssdk'
+
+// 1. Get the webhook URL from Bitrix24:
+//    - Go to Bitrix24
+//    - Settings → Developers → Webhooks
+//    - Create a new webhook with the required permissions
+//    - Copy the URL in the format: https://your-domain.bitrix24.com/rest/1/your-token/
+
+// 2. Initialize B24Hook
+const $b24 = B24Hook.fromWebhookUrl('https://your-domain.bitrix24.com/rest/1/your-token/')
+
+// 3. Use API methods
+async function getCompany(companyId: number) {
+  const response = await $b24.actions.v2.call.make({
+    method: 'crm.company.get',
+    params: { id: companyId },
+    requestId: `get-company-${companyId}`
+  })
+
+  if (response.isSuccess) {
+    return response.getData()
+  } else {
+    throw new Error(`Error getting company: ${response.getErrorMessages().join(', ')}`)
+  }
+}
+
+// Example of bulk creating deals
+async function createMultipleDeals(dealsData: Array<{title: string, opportunity: number}>) {
+  const calls = dealsData.map((deal, index) => [
+    'crm.deal.add',
+    {
+      fields: {
+        TITLE: deal.title,
+        OPPORTUNITY: deal.opportunity,
+        CATEGORY_ID: 0
+      }
+    }
+  ])
+
+  const response = await $b24.actions.v2.batchByChunk.make({
+    calls,
+    options: {
+      requestId: 'bulk-create-deals'
+    }
+  })
+
+  return response
+}
+```
+
+### For Server Applications with OAuth (B24OAuth)
+
+For server applications with OAuth 2.0 authentication:
+
+```ts
+import { B24OAuth } from '@bitrix24/b24jssdk'
+
+// 1. Register an application in Bitrix24:
+//    - Go to Bitrix24
+//    - Settings → Developers → Applications
+//    - Create a new application
+//    - Get the Client ID and Client Secret
+
+// 2. Initialize B24OAuth
+const $b24 = B24OAuth.fromConfig({
+  domain: 'your-domain.bitrix24.com',
+  clientId: 'your_client_id',
+  clientSecret: 'your_client_secret',
+  accessToken: 'current_access_token',
+  refreshToken: 'refresh_token'
+})
+
+// 3. Use API methods
+async function getTasks() {
+  const response = await $b24.actions.v2.call.make({
+    method: 'tasks.task.list',
+    params: {
+      filter: { '>ID': 0 },
+      select: ['ID', 'TITLE', 'STATUS']
+    },
+    requestId: 'get-all-tasks'
+  })
+
+  return response
+}
+
+// B24OAuth automatically refreshes tokens when they expire
+```
+
+## First Steps with API
+
+### Simple Connection Test
+
+```typescript
+// Test API availability
+async function testConnection() {
+  // For B24Hook or B24OAuth
+  const $b24 = B24Hook.fromWebhookUrl('https://your-domain.bitrix24.com/rest/1/your-token/')
+  
+  // 1. Check availability
+  const isHealthy = await $b24.tools.healthCheck.make({
+    requestId: 'health-check'
+  })
+  
+  if (!isHealthy) {
+    console.error('API unavailable. Check the webhook and connection.')
+    return
+  }
+  
+  // 2. Measure speed
+  const pingTime = await $b24.tools.ping.make({
+    requestId: 'ping-test'
+  })
+  
+  console.log(`API available, response time: ${pingTime}ms`)
+  
+  // 3. Get current user information
+  const userResponse = await $b24.actions.v2.call.make({
+    method: 'user.current',
+    requestId: 'get-current-user'
+  })
+  
+  if (userResponse.isSuccess) {
+    console.log('Current user:', userResponse.getData())
+  }
+  
+  return true
+}
+```
+
+### Basic CRM Operations
+
+```ts
+// Create a contact
+async function createContact(name: string, lastName: string, email: string) {
+  const response = await $b24.actions.v2.call.make({
+    method: 'crm.contact.add',
+    params: {
+      fields: {
+        NAME: name,
+        LAST_NAME: lastName,
+        EMAIL: [{ VALUE: email, VALUE_TYPE: 'WORK' }]
+      }
+    },
+    requestId: 'create-contact'
+  })
+  
+  return response
+}
+
+// Get a list of contacts
+async function getAllContacts() {
+  const generator = $b24.actions.v2.fetchList.make({
+    method: 'crm.contact.list',
+    params: {
+      select: ['ID', 'NAME', 'LAST_NAME', 'EMAIL'],
+      order: { ID: 'ASC' }
+    },
+    idKey: 'ID',
+    requestId: 'fetch-all-contacts'
+  })
+  
+  const allContacts = []
+  for await (const chunk of generator) {
+    allContacts.push(...chunk)
+    console.log(`Loaded ${chunk.length} contacts, total: ${allContacts.length}`)
+  }
+  
+  return allContacts
+}
+```
+
+### Examples of Using Main Methods
+
+```ts
+// 1. Single call (Call)
+const singleItem = await $b24.actions.v2.call.make({
+  method: 'crm.company.get',
+  params: { id: 123 },
+  requestId: 'single-call'
+})
+
+// 2. Get entire list (CallList)
+const allItems = await $b24.actions.v2.callList.make({
+  method: 'crm.company.list',
+  params: {
+    filter: { '>ID': 0 },
+    select: ['ID', 'TITLE']
+  },
+  idKey: 'ID',
+  requestId: 'get-all-companies'
+})
+
+// 3. Stream processing (FetchList)
+const generator = $b24.actions.v2.fetchList.make({
+  method: 'crm.deal.list',
+  params: { select: ['ID', 'TITLE', 'OPPORTUNITY'] },
+  idKey: 'ID',
+  requestId: 'stream-deals'
+})
+
+for await (const chunk of generator) {
+  // Process in batches of 50 elements
+  processChunk(chunk)
+}
+
+// 4. Batch processing (Batch)
+const batchResult = await $b24.actions.v2.batch.make({
+  calls: [
+    ['crm.company.get', { id: 1 }],
+    ['crm.company.get', { id: 2 }],
+    ['crm.company.get', { id: 3 }]
+  ],
+  options: {
+    requestId: 'batch-get-companies'
+  }
+})
+
+// 5. Bulk batch processing (BatchByChunk)
+const commands = Array.from({ length: 150 }, (_, i) => [
+  'crm.contact.add',
+  { fields: { NAME: `Contact ${i + 1}` } }
+])
+
+const bulkResult = await $b24.actions.v2.batchByChunk.make({
+  calls: commands,
+  options: {
+    requestId: 'bulk-create-contacts'
+  }
+})
+```
+
+## Tips for Beginners
+
+### 1. Always Use requestId
+
+```ts
+// Good
+await $b24.actions.v2.call.make({
+  method: 'crm.contact.get',
+  params: { id: 123 },
+  requestId: `contact-${123}-${Date.now()}`
+})
+
+// Bad (without requestId it will be difficult to debug)
+await $b24.actions.v2.call.make({
+  method: 'crm.contact.get',
+  params: { id: 123 }
+})
+```
+
+### 2. Check Operation Results
+
+```ts
+const response = await $b24.actions.v2.call.make({
+  method: 'some.method',
+  params: { /* ... */ },
+  requestId: 'my-request'
+})
+
+// Always check isSuccess
+if (!response.isSuccess) {
+  console.error('Error:', response.getErrorMessages())
+  // Error handling
+  return
+}
+
+// Only after successful check, work with the data
+const data = response.getData()!
+```
+
+### 3. Choose the Right Method for Working with Lists
+
+| Data Volume | Method | Why |
+| --- | --- | --- |
+| < 1000 records | `CallList` | Easy to use, all data at once |
+| > 1000 records | `FetchList` | Memory efficient, stream processing |
+| Selective data | `Call` + `Batch` | Only needed records, control over requests |
+
+## Need Help?
+
+- [Open an issue on GitHub](https://github.com/bitrix24/b24jssdk/issues){rel="&#x22;nofollow&#x22;"}
+- [View existing questions](https://github.com/bitrix24/b24jssdk/issues?q=is%3Aissue){rel="&#x22;nofollow&#x22;"}
+- [Official documentation](https://apidocs.bitrix24.com/){rel="&#x22;nofollow&#x22;"}
+
+---
+
+**Tip**: Start with simple queries (e.g., `user.current`) to make sure the connection works correctly before moving on to complex operations with CRM or tasks.
+
+---
+
+# Vue Project
+
+> Guide for installing Bitrix24 JS SDK in Vue applications.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Add to a Vue project
+
+### Install the Bitrix24 JS SDK package
+
+ 
+ ```bash [pnpm]
+  pnpm add @bitrix24/b24jssdk
+  ```
+
+ ```bash [yarn]
+  yarn add @bitrix24/b24jssdk
+  ```
+
+ ```bash [npm]
+  npm install @bitrix24/b24jssdk
+  ```
+
+ ```bash [bun]
+  bun add @bitrix24/b24jssdk
+  ```
+ 
+### Import
+
+Import the library into your project:
+
+```ts
+import { LoggerFactory } from '@bitrix24/b24jssdk'
+```
+
+### Init
+
+ :::tabs
+ ::::tabs-item{label="B24Frame"}
+ To work with Bitrix24 from the application built into the Bitrix24 interface use the `B24Frame` object.
+
+ It is initialized on the client side using `initializeB24Frame()`.
+
+ ```vue [SomePage.vue]
+    <script setup lang="ts">
+    import type { LoggerFactory, B24Frame } from '@bitrix24/b24jssdk'
+    import { onMounted, onUnmounted } from 'vue'
+
+    const $logger = LoggerFactory.createForBrowser('B24/jsSdk::vue', true)
+    let $b24: undefined | B24Frame
+
+    async function someFunction(): Promise<void> {
+      if (!$b24) {
+        return
+      }
+      // ...
+    }
+
+    onMounted(async () => {
+      try {
+        $b24 = await initializeB24Frame()
+      } catch (error) {
+        $logger.error('Some problems', { error })
+      }
+    })
+
+    onUnmounted(() => {
+      $b24?.destroy()
+    })
+    </script>
+    ```
+ 
+ ::::tabs-item{label="B24Hook"}
+ > ⚠️ SECURITY
+> The `B24Hook` object is intended **exclusively for use on the server**.
+ >
+ > - A webhook contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24Hook` object.
+
+ ```ts
+    import { B24Hook } from '@bitrix24/b24jssdk'
+
+    // 1. Get the webhook URL from Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Webhooks
+    //    - Create a new webhook with the required permissions
+    //    - Copy the URL in the format: https://your-domain.bitrix24.com/rest/1/your-token/
+
+    // 2. Initialize B24Hook
+    const $b24 = B24Hook.fromWebhookUrl('https://your-domain.bitrix24.com/rest/1/your-token/')
+
+    // 3. Use API methods
+    ```
+ 
+ ::::tabs-item{label="B24OAuth"}
+ > ⚠️ SECURITY
+> The `B24OAuth` object is intended **exclusively for use on the server**.
+ >
+ > - A b24OAuth contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24OAuth` object.
+
+ ```ts
+    import { B24OAuth } from '@bitrix24/b24jssdk'
+
+    // 1. Register an application in Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Applications
+    //    - Create a new application
+    //    - Get the Client ID and Client Secret
+
+    // 2. Initialize B24OAuth
+    const $b24 = B24OAuth.fromConfig({
+      domain: 'your-domain.bitrix24.com',
+      clientId: 'your_client_id',
+      clientSecret: 'your_client_secret',
+      accessToken: 'current_access_token',
+      refreshToken: 'refresh_token'
+    })
+
+    // 3. Use API methods
+
+    // B24OAuth automatically refreshes tokens when they expire
+    ```
+ 
+---
+
+# Nuxt Project
+
+> Guide for installing Bitrix24 JS SDK in Nuxt applications.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Add to a Nuxt project
+
+To access the **Bitrix24 JS SDK** in a **Nuxt** project, use the `@bitrix24/b24jssdk-nuxt` module.
+
+> !NOTE
+> Requires **Nuxt 4**. Make sure to upgrade to Nuxt 4 you begin.
+
+### Install the Bitrix24 JS SDK package
+
+ 
+ ```bash [pnpm]
+  pnpm add @bitrix24/b24jssdk-nuxt
+  ```
+
+ ```bash [yarn]
+  yarn add @bitrix24/b24jssdk-nuxt
+  ```
+
+ ```bash [npm]
+  npm install @bitrix24/b24jssdk-nuxt
+  ```
+
+ ```bash [bun]
+  bun add @bitrix24/b24jssdk-nuxt
+  ```
+ 
+### Add the Bitrix24 JS SDK module in your `nuxt.config.ts`
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  modules: ['@bitrix24/b24jssdk-nuxt']
+})
+```
+
+### Import
+
+Import the library into your project:
+
+```ts
+import { LoggerFactory } from '@bitrix24/b24jssdk'
+```
+
+### Init
+
+ :::tabs
+ ::::tabs-item{label="B24Frame"}
+ To work with Bitrix24 from the application built into the Bitrix24 interface use the `B24Frame` object.
+
+ It is initialized on the client side using `initializeB24Frame()`.
+
+ ```vue [SomePage.vue]
+    <script setup lang="ts">
+    import type { LoggerFactory, B24Frame } from '@bitrix24/b24jssdk'
+    import { onMounted, onUnmounted } from 'vue'
+
+    const $logger = LoggerFactory.createForBrowser('B24/jsSdk::vue', true)
+    let $b24: undefined | B24Frame
+
+    async function someFunction(): Promise<void> {
+      if (!$b24) {
+        return
+      }
+      // ...
+    }
+
+    onMounted(async () => {
+      try {
+        $b24 = await initializeB24Frame()
+      } catch (error) {
+        $logger.error('Some problems', { error })
+      }
+    })
+
+    onUnmounted(() => {
+      $b24?.destroy()
+    })
+    </script>
+    ```
+ 
+ ::::tabs-item{label="B24Hook"}
+ > ⚠️ SECURITY
+> The `B24Hook` object is intended **exclusively for use on the server**.
+ >
+ > - A webhook contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24Hook` object.
+
+ ```ts
+    import { B24Hook } from '@bitrix24/b24jssdk'
+
+    // 1. Get the webhook URL from Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Webhooks
+    //    - Create a new webhook with the required permissions
+    //    - Copy the URL in the format: https://your-domain.bitrix24.com/rest/1/your-token/
+
+    // 2. Initialize B24Hook
+    const $b24 = B24Hook.fromWebhookUrl('https://your-domain.bitrix24.com/rest/1/your-token/')
+
+    // 3. Use API methods
+    ```
+ 
+ ::::tabs-item{label="B24OAuth"}
+ > ⚠️ SECURITY
+> The `B24OAuth` object is intended **exclusively for use on the server**.
+ >
+ > - A b24OAuth contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24OAuth` object.
+
+ ```ts
+    import { B24OAuth } from '@bitrix24/b24jssdk'
+
+    // 1. Register an application in Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Applications
+    //    - Create a new application
+    //    - Get the Client ID and Client Secret
+
+    // 2. Initialize B24OAuth
+    const $b24 = B24OAuth.fromConfig({
+      domain: 'your-domain.bitrix24.com',
+      clientId: 'your_client_id',
+      clientSecret: 'your_client_secret',
+      accessToken: 'current_access_token',
+      refreshToken: 'refresh_token'
+    })
+
+    // 3. Use API methods
+
+    // B24OAuth automatically refreshes tokens when they expire
+    ```
+ 
+---
+
+# React Project
+
+> Guide for installing Bitrix24 JS SDK in React applications.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Add to a Vue project
+
+### Install the Bitrix24 JS SDK package
+
+ 
+ ```bash [pnpm]
+  pnpm add @bitrix24/b24jssdk
+  ```
+
+ ```bash [yarn]
+  yarn add @bitrix24/b24jssdk
+  ```
+
+ ```bash [npm]
+  npm install @bitrix24/b24jssdk
+  ```
+
+ ```bash [bun]
+  bun add @bitrix24/b24jssdk
+  ```
+ 
+### Import
+
+Import the library into your project:
+
+```ts
+import { LoggerFactory } from '@bitrix24/b24jssdk'
+```
+
+### Init
+
+ :::tabs
+ ::::tabs-item{label="B24Frame"}
+ To work with Bitrix24 from the application built into the Bitrix24 interface use the `B24Frame` object.
+
+ It is initialized on the client side using `initializeB24Frame()`.
+
+ ```tsx [App.tsx]
+    import type { B24Frame, ISODate } from '@bitrix24/b24jssdk';
+    import type { DateTime } from 'luxon';
+    import { useEffect, useRef } from 'react';
+    import { initializeB24Frame, LoggerFactory, EnumCrmEntityTypeId, Text } from '@bitrix24/b24jssdk';
+
+    const devMode = typeof import.meta !== 'undefined' && (import.meta.env?.DEV ?? false);
+    const $logger = LoggerFactory.createForBrowser('MyApp', devMode);
+
+    type CompanyResponse = { id: number; title: string; createdTime: ISODate };
+    type Company = Omit<CompanyResponse, 'createdTime'> & { createdTime: DateTime };
+
+    async function loadCompanyList(b24: B24Frame): Promise<Company[]> {
+      const result: Company[] = [];
+
+      const response = await b24.actions.v2.call.make<{ items: CompanyResponse[] }>({
+        method: 'crm.item.list',
+        params: {
+          entityTypeId: EnumCrmEntityTypeId.company,
+          order: { id: 'DESC' },
+          select: ['id', 'title', 'createdTime'],
+        },
+      });
+
+      if (!response.isSuccess) {
+        throw new Error(`API Error: ${response.getErrorMessages().join('; ')}`);
+      }
+
+      const responseData = response.getData()!.result as { items: CompanyResponse[] };
+      responseData.items.forEach((entity) => {
+        result.push({
+          id: entity.id,
+          title: entity.title,
+          createdTime: Text.toDateTime(entity.createdTime),
+        });
+      });
+
+      return result;
+    }
+
+    function App() {
+      const b24Ref = useRef<B24Frame | null>(null);
+
+      useEffect(() => {
+        let isMounted = true;
+
+        async function init() {
+          try {
+            const b24 = await initializeB24Frame();
+            if (!isMounted) {
+              b24.destroy();
+              return;
+            }
+            b24Ref.current = b24;
+
+            const companies = await loadCompanyList(b24);
+            $logger.notice('Companies loaded successfully', { companies });
+          } catch (error) {
+            $logger.error('Some problems', { error });
+          }
+        }
+
+        init();
+
+        return () => {
+          isMounted = false;
+          b24Ref.current?.destroy();
+        };
+      }, []);
+
+      return (
+        <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+          <h1>B24 JS SDK - React Demo</h1>
+          <p>See the result in the developer console</p>
+          <p style={{ color: '#666', fontSize: '14px' }}>
+            Note: This app must be opened inside Bitrix24 as a frame application.
+          </p>
+        </div>
+      );
+    }
+
+    export default App;
+    ```
+
+ Key React-specific considerations:
+
+ - **Use React Hooks:** Initialize B24Frame in useEffect with cleanup function
+ - **Use Refs:** Store B24Frame instance in a ref to persist it between renders
+ - **Cleanup:** Always call destroy() when component unmounts to prevent memory leaks
+ - **Environment:** Remember that B24Frame only works within Bitrix24 iframe
+ 
+ ::::tabs-item{label="B24Hook"}
+ > ⚠️ SECURITY
+> The `B24Hook` object is intended **exclusively for use on the server**.
+ >
+ > - A webhook contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24Hook` object.
+
+ ```ts
+    import { B24Hook } from '@bitrix24/b24jssdk'
+
+    // 1. Get the webhook URL from Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Webhooks
+    //    - Create a new webhook with the required permissions
+    //    - Copy the URL in the format: https://your-domain.bitrix24.com/rest/1/your-token/
+
+    // 2. Initialize B24Hook
+    const $b24 = B24Hook.fromWebhookUrl('https://your-domain.bitrix24.com/rest/1/your-token/')
+
+    // 3. Use API methods
+    ```
+ 
+ ::::tabs-item{label="B24OAuth"}
+ > ⚠️ SECURITY
+> The `B24OAuth` object is intended **exclusively for use on the server**.
+ >
+ > - A b24OAuth contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24OAuth` object.
+
+ ```ts
+    import { B24OAuth } from '@bitrix24/b24jssdk'
+
+    // 1. Register an application in Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Applications
+    //    - Create a new application
+    //    - Get the Client ID and Client Secret
+
+    // 2. Initialize B24OAuth
+    const $b24 = B24OAuth.fromConfig({
+      domain: 'your-domain.bitrix24.com',
+      clientId: 'your_client_id',
+      clientSecret: 'your_client_secret',
+      accessToken: 'current_access_token',
+      refreshToken: 'refresh_token'
+    })
+
+    // 3. Use API methods
+
+    // B24OAuth automatically refreshes tokens when they expire
+    ```
+ 
+---
+
+# Node.js Project
+
+> Guide for installing Bitrix24 JS SDK in Node.js applications.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Add to a Node.js project
+
+> !NOTE
+> Since version `0.4.0` CommonJs is not supported. Only `ESM` and `UMD`.
+
+Before you begin, make sure you have the latest version of Node.js installed.
+
+> !NOTE
+> We support version Node.js `^18.0.0 || ^20.0.0 || >=22.0.0`
+
+Then run the following command to install the library:
+
+### Install the Bitrix24 JS SDK package
+
+ 
+ ```bash [pnpm]
+  pnpm add @bitrix24/b24jssdk
+  ```
+
+ ```bash [yarn]
+  yarn add @bitrix24/b24jssdk
+  ```
+
+ ```bash [npm]
+  npm install @bitrix24/b24jssdk
+  ```
+
+ ```bash [bun]
+  bun add @bitrix24/b24jssdk
+  ```
+ 
+### Import
+
+Import the library into your project:
+
+```ts
+import { LoggerFactory } from '@bitrix24/b24jssdk'
+```
+
+### Init
+
+ :::tabs
+ ::::tabs-item{label="B24Hook"}
+ > ⚠️ SECURITY
+> The `B24Hook` object is intended **exclusively for use on the server**.
+ >
+ > - A webhook contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24Hook` object.
+
+ ```ts
+    import { B24Hook } from '@bitrix24/b24jssdk'
+
+    // 1. Get the webhook URL from Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Webhooks
+    //    - Create a new webhook with the required permissions
+    //    - Copy the URL in the format: https://your-domain.bitrix24.com/rest/1/your-token/
+
+    // 2. Initialize B24Hook
+    const $b24 = B24Hook.fromWebhookUrl('https://your-domain.bitrix24.com/rest/1/your-token/')
+
+    // 3. Use API methods
+    ```
+ 
+ ::::tabs-item{label="B24OAuth"}
+ > ⚠️ SECURITY
+> The `B24OAuth` object is intended **exclusively for use on the server**.
+ >
+ > - A b24OAuth contains a secret access key, which **MUST NOT** be used in client-side code (browser, mobile app).
+ > - For the client side, use [`B24Frame`]
+
+ To work with Bitrix24 from a standalone server-side application, use the `B24OAuth` object.
+
+ ```ts
+    import { B24OAuth } from '@bitrix24/b24jssdk'
+
+    // 1. Register an application in Bitrix24:
+    //    - Go to Bitrix24
+    //    - Settings → Developers → Applications
+    //    - Create a new application
+    //    - Get the Client ID and Client Secret
+
+    // 2. Initialize B24OAuth
+    const $b24 = B24OAuth.fromConfig({
+      domain: 'your-domain.bitrix24.com',
+      clientId: 'your_client_id',
+      clientSecret: 'your_client_secret',
+      accessToken: 'current_access_token',
+      refreshToken: 'refresh_token'
+    })
+
+    // 3. Use API methods
+
+    // B24OAuth automatically refreshes tokens when they expire
+    ```
+ 
+---
+
+# UMD
+
+> Guide for using UMD version Bitrix24 JS SDK in you applications.
+
+## Add to you project
+
+### Include the library
+
+You can include the library directly via CDN. Add the following `<script>` tag to your HTML file:
+
+```html
+<script src="https://unpkg.com/@bitrix24/b24jssdk@latest/dist/umd/index.min.js"></script>
+```
+
+If necessary, download the UMD version of the library from [unpkg.com](https://unpkg.com/browse/@bitrix24/b24jssdk@latest/dist/){rel=""nofollow""} and add it to your project.
+
+Then include it in your HTML file:
+
+```html
+<script src="/path/to/umd/index.min.js"></script>
+```
+
+### Import
+
+After including, the library will be available through the global variable `B24Js`.
+
+```js
+B24Js.LoggerFactory.createForBrowser('B24/jsSdk::umd', true);
+```
+
+### Init
+
+ :::tabs
+ ::::tabs-item{label="B24Frame"}
+ To work with Bitrix24 from the application built into the Bitrix24 interface use the `B24Frame` object.
+
+ It is initialized on the client side using `initializeB24Frame()`.
+
+ ```js
+    const logger = B24Js.LoggerFactory.createForBrowser('B24/jsSdk::umd', true);
+
+    try {
+      // Initialize B24Frame instance
+      let b24 = await B24Js.initializeB24Frame();
+      
+    } catch (error) {
+      logger.error('Some problems', { error })
+    }
+    ```
+ 
+## Examples
+
+### B24Frame :badge{.align-text-top label="client-side"}
+
+Here's a simple example demonstrating how to get a list of companies.
+
+> [!NOTE](https://apidocs.bitrix24.com/local-integrations/serverside-local-app-with-ui.html)
+> The code is expected to run in the Bitrix24 user interface.
+
+::rest-api-version-only
+#rest-api-ver2
+```html [index.html]
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bitrix24 JS SDK Demo</title>
+</head>
+<body>
+<h1>Company Loader Example</h1>
+<p>Check developer console for results</p>
+
+<script src="https://unpkg.com/@bitrix24/b24jssdk@latest/dist/umd/index.min.js"></script>
+<script>
+  // Create logger
+  const logger = B24Js.LoggerFactory.createForBrowser('B24/jsSdk::umd', true);
+
+  /**
+   * Load company list
+   */
+  async function loadCompanies(b24) {
+    try {
+      logger.debug('Loading companies...');
+
+      const response = await b24.actions.v2.call.make({
+        method: 'crm.item.list',
+        params: {
+          entityTypeId: B24Js.EnumCrmEntityTypeId.company,
+          order: { id: 'desc' },
+          select: ['id', 'title', 'createdTime']
+        }
+      });
+
+      const data = response.getData().result;
+
+      const companies = (data?.items || []).map((item) => {
+        return {
+          id: Number.parseInt(item.id),
+          title: item.title,
+          createdTime: B24Js.Text.toDateTime(item.createdTime) // @memo this is luxon/DateTime
+        };
+      });
+
+      logger.debug('Companies loaded successfully', { companies });
+      return companies;
+    } catch (error) {
+      logger.error('Request failed', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Main application function
+   */
+  async function main() {
+    try {
+      // Initialize B24Frame instance
+      let b24 = await B24Js.initializeB24Frame();
+
+      // Load companies
+      const companies = await loadCompanies(b24);
+
+      // Further data processing...
+      logger.info('Loaded ' + companies.length + ' companies');
+    } catch (error) {
+      logger.error('Some problems', { error })
+    }
+  }
+
+  /// Start application after DOM load
+  document.addEventListener('DOMContentLoaded', function() {
+    main();
+  });
+</script>
+</body>
+</html>
+```
+
+#rest-api-ver3
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bitrix24 JS SDK Demo</title>
+</head>
+<body>
+<h1>Company Loader Example</h1>
+<p>Check developer console for results</p>
+
+<script src="https://unpkg.com/@bitrix24/b24jssdk@latest/dist/umd/index.min.js"></script>
+<script>
+  // Create logger
+  const logger = B24Js.LoggerFactory.createForBrowser('B24/jsSdk::umd', true);
+
+  /**
+   * Load company list
+   */
+  async function loadCompanies(b24) {
+    try {
+      logger.debug('Loading companies...');
+
+      const response = await b24.actions.v3.call.make({
+        method: 'crm.item.list',
+        params: {
+          entityTypeId: B24Js.EnumCrmEntityTypeId.company,
+          order: { id: 'desc' },
+          select: ['id', 'title', 'createdTime']
+        }
+      });
+
+      const data = response.getData().result;
+
+      const companies = (data?.items || []).map((item) => {
+        return {
+          id: Number.parseInt(item.id),
+          title: item.title,
+          createdTime: B24Js.Text.toDateTime(item.createdTime) // @memo this is luxon/DateTime
+        };
+      });
+
+      logger.debug('Companies loaded successfully', { companies });
+      return companies;
+    } catch (error) {
+      logger.error('Request failed', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Main application function
+   */
+  async function main() {
+    try {
+      // Initialize B24Frame instance
+      let b24 = await B24Js.initializeB24Frame();
+
+      // Load companies
+      const companies = await loadCompanies(b24);
+
+      // Further data processing...
+      logger.info('Loaded ' + companies.length + ' companies');
+    } catch (error) {
+      logger.error('Some problems', { error })
+    }
+  }
+
+  /// Start application after DOM load
+  document.addEventListener('DOMContentLoaded', function() {
+    main();
+  });
+</script>
+</body>
+</html>
+```
+
+---
+
+# Migration to v1
+
+> A comprehensive guide to migrate your application from Bitrix24 JS SDK v0 to Bitrix24 JS SDK v1.
+
+This guide provides step-by-step instructions to migrate your application to Bitrix24 JS SDK v1.
+
+> !NOTE
+> We've tried to maintain compatibility, but if any issues arise, please [let us know](https://github.com/bitrix24/b24jssdk/issues){rel="&#x22;nofollow&#x22;"}.
+
+After upgrading to Bitrix24 JS SDK v1, please note the following important changes:
+
+## Change
+
+### PlacementManager.title
+
+To align with documentation and reduce confusion, the `PlacementManager.title` property has been renamed to `PlacementManager.placement`.
+
+```diff
+- if (b24Frame.placement.title === 'DEFAULT') {
++ if (b24Frame.placement.placement === 'DEFAULT') {
+  // some code
+} 
+```
+
+### TypeB24.getTargetOriginWithPath
+
+> Get the account address Bitrix24 with path
+
+The function now returns paths for `restApi:v2` and `restApi:v3`.
+
+```diff
++ import { ApiVersion } from '@bitrix24/b24jssdk'
+
+- b24.getTargetOriginWithPath()
++ b24.getTargetOriginWithPath().get(ApiVersion.v2)
++ b24.getTargetOriginWithPath().get(ApiVersion.v3)
+```
+
+### TypeB24.getHttpClient
+
+> Returns the HTTP client to perform the request.
+
+The function now returns HTTP client for `restApi:v2` and `restApi:v3`.
+
+```diff
++ import { ApiVersion } from '@bitrix24/b24jssdk'
+
+- b24.getHttpClient()
++ b24.getHttpClient(ApiVersion.v2)
++ b24.getHttpClient(ApiVersion.v3)
+```
+
+### Error
+
+All errors now inherit from `SdkError`. Just be aware of that.
+
+```diff
++ import { SdkError } from '@bitrix24/b24jssdk'
+
+try {
+  // ...
+} catch (error) {
+-  if (error instanceof Error) {
++  if (error instanceof SdkError) {
+   // ...
+  }
+}
+```
+
+## Removed
+
+### Unused methods in TypeHttp
+
+Request registration methods:
+
+- `TypeHttp.setLogTag()`
+- `TypeHttp.clearLogTag()`
+
+Now you need to use the `requestId` parameter for these purposes.
+
+### Unused methods in Http
+
+Method for displaying system messages `Http.getSystemLogger()`
+
+Now forced display is used via [`LoggerFactory.forcedLog()`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/logger.md)
+
+### Restriction Manager
+
+The `RestrictionManager` class has been removed. The [`Limiters`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/limiters.md) system is used instead.
+
+```diff
+- import { RestrictionManagerParamsForEnterprise } from '@bitrix24/b24jssdk'
++ import { ParamsFactory } from '@bitrix24/b24jssdk'
+
+- $b24.getHttpClient().setRestrictionManagerParams( RestrictionManagerParamsForEnterprise )
++ $b24.setRestrictionManagerParams( ParamsFactory.getEnterprise() )
+// or
++ const b24 = B24Hook.fromWebhookUrl(hookPath, { restrictionParams: ParamsFactory.getEnterprise() })
+
+- $b24.getHttpClient().setRestrictionManagerParams( { sleep: 600, speed: 0.01, amount: 30 * 5 } )
++ $b24.setRestrictionManagerParams( { rateLimit: { burstLimit: 250, drainRate: 5 } } )
+```
+
+## Deprecated
+
+### AbstractB24.batchSize
+
+> Maximum length for batch response.
+
+This const is deprecated and will be removed in version `2.0.0`.
+
+```diff
+- if (size < AbstractB24.batchSize) {
++ if (size < 50) {
+  // some code ...
+}
+```
+
+### TypeB24.callMethod
+
+> Calls the Bitrix24 REST API method.
+
+This method is deprecated and will be removed in version `2.0.0`.
+
+::tabs{.mt-0}
+ :::tabs-item{label="restApi:v2"}
+ For `restApi:v2`, you must use the [`b24.actions.v2.call.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver2.md) method.
+
+ ```diff
+  - await b24.callMethod('some.method', { filter: { '>id': 123 } }, 100)
+  + await b24.actions.v2.call.make({
+  +   method: 'some.method',
+  +   params: {
+  +     filter: { '>id': 123 },
+  +     start: 100
+  +   },
+  +   requestId: 'unique-request-id'
+  + })
+  ```
+ 
+ :::tabs-item{label="restApi:v3"}
+ For `restApi:v3`, you must use the [`b24.actions.v3.call.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver3.md) method.
+
+ ```diff
+  - await b24.callMethod('some.method', { filter: { '>id': 123 } }, 100)
+  + await b24.actions.v3.call.make({
+  +   method: 'some.method',
+  +   params: {
+  +     filter: [['id', '>', 123 ]],
+  +     pagination: { limit: 50, page: 2 }
+  +   },
+  +   requestId: 'unique-request-id'
+  + })
+  ```
+ 
+### TypeB24.callListMethod
+
+> Calls a Bitrix24 REST API list method to retrieve all data.
+
+This method is deprecated and will be removed in version `2.0.0`.
+
+::tabs{.mt-0}
+ :::tabs-item{label="restApi:v2"}
+ For `restApi:v2`, you must use the [`b24.actions.v2.call.callList(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver2.md) method.
+
+ ```diff
+  - await b24.callListMethod('some.method', { filter: { '>id': 123 } }, null, 'items')
+  + await b24.actions.v2.callList.make({
+  +   method: 'some.method',
+  +   params: { filter: { '>id': 123 } },
+  +   idKey: 'id',
+  +   customKeyForResult: 'items',
+  +   requestId: 'unique-request-id'
+  + })
+  ```
+ 
+ :::tabs-item{label="restApi:v3"}
+ For `restApi:v3`, you must use the [`b24.actions.v3.call.callList(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver3.md) method.
+
+ ```diff
+  - await b24.callListMethod('some.method', { filter: { '>id': 123 } }, null, 'items')
+  + await b24.actions.v3.callList.make({
+  +   method: 'some.method',
+  +   params: { filter: [['id', '>', 123 ]] },
+  +   idKey: 'id',
+  +   customKeyForResult: 'items',
+  +   requestId: 'unique-request-id',
+  +   limit: 60
+  + })
+  ```
+ 
+### TypeB24.fetchListMethod
+
+> Calls a Bitrix24 REST API list method and returns an async generator.
+
+This method is deprecated and will be removed in version `2.0.0`.
+
+::tabs{.mt-0}
+ :::tabs-item{label="restApi:v2"}
+ For `restApi:v2`, you must use the [`b24.actions.v2.fetchList.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver2.md) method.
+
+ ```diff
+  - b24.fetchListMethod('some.method', { filter: { '>id': 123 } }, 'id', 'items')
+  + b24.actions.v2.fetchList.make({
+  +   method: 'some.method',
+  +   params: { filter: { '>id': 123 } },
+  +   idKey: 'id',
+  +   customKeyForResult: 'items',
+  +   requestId: 'unique-request-id'
+  + })
+  ```
+ 
+ :::tabs-item{label="restApi:v3"}
+ For `restApi:v3`, you must use the [`b24.actions.v3.fetchList.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver3.md) method.
+
+ ```diff
+  - b24.fetchListMethod('some.method', { filter: { '>id': 123 } }, 'id', 'items')
+  + b24.actions.v3.fetchList.make({
+  +   method: 'some.method',
+  +   params: { filter: [['id', '>', 123 ]] },
+  +   idKey: 'id',
+  +   customKeyForResult: 'items',
+  +   requestId: 'unique-request-id',
+  +   limit: 60
+  + })
+  ```
+ 
+### TypeB24.callBatch
+
+> Executes a batch request to the Bitrix24 REST API.
+
+This method is deprecated and will be removed in version `2.0.0`.
+
+::tabs{.mt-0}
+ :::tabs-item{label="restApi:v2"}
+ For `restApi:v2`, you must use the [`b24.actions.v2.batch.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver2.md) method.
+
+ ```diff
+  - await b24.callBatch([['some.method.1', { filter: { '>id': 123 } }], ['some.method.2', { filter: { '<id': 456 } }]], true, true)
+  + await b24.actions.v2.batch.make({
+  +   calls: [
+  +     ['some.method.1', { filter: { '>id': 123 } }],
+  +     ['some.method.2', { filter: { '<id': 456 } }],
+  +   ],
+  +   options: { 
+  +     isHaltOnError: true,
+  +     returnAjaxResult: true,
+  +     requestId: 'unique-request-id'
+  +   }
+  + })
+  ```
+ 
+ :::tabs-item{label="restApi:v3"}
+ For `restApi:v3`, you must use the [`b24.actions.v3.batch.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver3.md) method.
+
+ ```diff
+  - await b24.callBatch([['some.method.1', { filter: { '>id': 123 } }], ['some.method.2', { filter: { '<id': 456 } }]], true, true)
+  + await b24.actions.v3.batch.make({
+  +   calls: [
+  +     ['some.method.1', { filter: [['id', '>', 123 ]] }],
+  +     ['some.method.2', { filter: [['id', '<', 456 ]] }],
+  +   ],
+  +   options: { 
+  +     isHaltOnError: true,
+  +     returnAjaxResult: true,
+  +     requestId: 'unique-request-id'
+  +   }
+  + })
+  ```
+ 
+### TypeB24.callBatchByChunk
+
+> Executes a batch request to the Bitrix24 REST API with automatic chunking for any number of commands.
+
+This method is deprecated and will be removed in version `2.0.0`.
+
+::tabs{.mt-0}
+ :::tabs-item{label="restApi:v2"}
+ For `restApi:v2`, you must use the [`b24.actions.v2.batchByChunk.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-by-chunk-rest-api-ver2.md) method.
+
+ ```diff
+  - await b24.callBatchByChunk([['some.method.1', { filter: { '>id': 123 } }], ['some.method.2', { filter: { '<id': 456 } }]], true)
+  + await b24.actions.v2.batchByChunk.make({
+  +   calls: [
+  +     ['some.method.1', { filter: { '>id': 123 } }],
+  +     ['some.method.2', { filter: { '<id': 456 } }],
+  +   ],
+  +   options: { 
+  +     isHaltOnError: true,
+  +     requestId: 'unique-request-id'
+  +   }
+  + })
+  ```
+ 
+ :::tabs-item{label="restApi:v3"}
+ For `restApi:v3`, you must use the [`b24.actions.v3.batchByChunk.make(options)`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-by-chunk-rest-api-ver3.md) method.
+
+ ```diff
+  - await b24.callBatchByChunk([['some.method.1', { filter: { '>id': 123 } }], ['some.method.2', { filter: { '<id': 456 } }]], true)
+  + await b24.actions.v3.batchByChunk.make({
+  +   calls: [
+  +     ['some.method.1', { filter: [['id', '>', 123 ]] }],
+  +     ['some.method.2', { filter: [['id', '<', 456 ]] }],
+  +   ],
+  +   options: { 
+  +     isHaltOnError: true,
+  +     requestId: 'unique-request-id'
+  +   }
+  + })
+  ```
+ 
+### LoggerBrowser
+
+> Used for logging data
+
+This class is deprecated and will be removed in version `2.0.0`.
+
+Now a more [universal logging system](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/logger.md) is used, somewhat similar to [`Monolog (PHP)`](https://github.com/Seldaek/monolog){rel="&#x22;nofollow&#x22;"}.
+
+```diff
+- import { LoggerBrowser } from '@bitrix24/b24jssdk'
++ import { LoggerFactory } from '@bitrix24/b24jssdk'
+
+- const $logger = LoggerBrowser.build('MyApp', import.meta.env?.DEV === true)
++ const $logger = LoggerFactory.createForBrowser('MyApp', import.meta.env?.DEV === true)
+
+const dataList = { key1: value1, key2: value2 }
+
+- $logger.info('response', dataList)
++ $logger.info('response', { someInfo: dataList })
+```
+
+---
+
+# LLMs.txt
+
+> How to get AI tools like Cursor, Windsurf, GitHub Copilot, ChatGPT, and Claude to understand Bitrix24 JS SDK methods, tools, and best practices.
+
+## What is LLMs.txt?
+
+LLMs.txt is a structured documentation format specifically designed for large language models (LLMs). Bitrix24 JS SDK provides LLMs.txt files that contain comprehensive information about our component library, making it easy for AI tools to understand and assist with Bitrix24 JS SDK development.
+
+These files are optimized for AI consumption and contain structured information about components, APIs, usage patterns, and best practices.
+
+## Available Routes
+
+We provide LLMs.txt routes to help AI tools access our documentation:
+
+- **`/llms.txt`** - Contains a structured overview of all components and their documentation links (\~5K tokens)
+- **`/llms-full.txt`** - Provides comprehensive documentation including implementation details, examples, theming, composables, and migration guidance (\~1M+ tokens)
+
+## Choosing the Right File
+
+> !NOTE
+> strong,\[object Object],Most users should start with ,code,\[object Object],/llms.txt - it contains all essential information and works with standard LLM context windows.
+>
+> Use `/llms-full.txt` only if you need comprehensive implementation examples and your AI tool supports large contexts (200K+ tokens).
+
+## Important Usage Notes
+
+> !WARNING
+> strong,\[object Object],@-symbol must be typed manually - When using tools like Cursor or Windsurf, the `@` symbol must be typed by hand in the chat interface. Copy-pasting breaks the tool's ability to recognize it as a context reference.
+
+## Usage with AI Tools
+
+### Cursor
+
+Bitrix24 JS SDK provides specialized LLMs.txt files that you can reference in Cursor for better AI assistance with component development.
+
+#### How to use:
+
+1. **Direct reference**: Mention the LLMs.txt URLs when asking questions
+2. Add these specific URLs to your project context using `@docs`
+
+[Read more about Cursor Web and Docs Search](https://docs.cursor.com/en/context/@-symbols/@-docs){rel="&#x22;nofollow&#x22;"}
+
+### Windsurf
+
+Windsurf can directly access the Bitrix24 JS SDK LLMs.txt files to understand component usage and best practices.
+
+#### Using LLMs.txt with Windsurf:
+
+- Use `@docs` to reference specific LLMs.txt URLs
+- Create persistent rules referencing these URLs in your workspace
+
+[Read more about Windsurf Web and Docs Search](https://docs.windsurf.com/windsurf/cascade/web-search){rel="&#x22;nofollow&#x22;"}
+
+### Other AI Tools
+
+Any AI tool that supports LLMs.txt can use these routes to better understand Bitrix24 JS SDK.
+
+#### Examples for ChatGPT, Claude, or other LLMs:
+
+- "Using Bitrix24 JS SDK documentation from <https://bitrix24.github.io/b24jssdk/llms.txt>{rel="&#x22;nofollow&#x22;"}"
+- "Follow complete Bitrix24 JS SDK guidelines from <https://bitrix24.github.io/b24jssdk/llms-full.txt>{rel="&#x22;nofollow&#x22;"}"
+
+---
+
+# Introduction to working with Bitrix24 REST API
+
+> Overview of SDK capabilities for working with Bitrix24 REST API
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+The SDK for working with Bitrix24 REST API provides a set of tools for interacting with Bitrix24 API from JavaScript/TypeScript applications.
+
+::rest-api-version-only
+#rest-api-ver2
+The library supports both REST API version 2 (deprecation process has started but still widely used) and the new version 3 (implementation process has started).
+
+## SDK Architecture
+
+The SDK is built on three main classes that inherit from a common base class and provide a unified interface for working with REST API:
+
+### Three Classes for Different Usage Scenarios
+
+| Класс | Назначение | Где использовать | Особенности |
+| --- | --- | --- | --- |
+| `B24Frame` | Working from applications embedded in the Bitrix24 interface | Client-side (browser) | Automatically available in Bitrix24 application iframe, uses current user token |
+| `B24Hook` | Working from standalone server applications via webhook | Server-side | Uses permanent webhook token, **cannot be used in browser** |
+| `B24OAuth` | Working from standalone server applications via OAuth 2.0 | Server-side | Uses OAuth token with refresh capability, **cannot be used in browser** |
+
+### Common Interface
+
+All three classes inherit from a common base class and provide the same set of methods:
+
+::rest-api-version-only
+#rest-api-ver2
+```ts
+// Unified interface for all classes
+interface B24Base {
+  actions: {
+    v2: {
+      call: { make(options: ActionCallV2): Promise<AjaxResult> }
+      callList: { make(options: ActionCallListV2): Promise<Result<T[]>> }
+      fetchList: { make(options: ActionFetchListV2): AsyncGenerator<T[]> }
+      batch: { make(options: ActionBatchV2): Promise<CallBatchResult> }
+      batchByChunk: { make(options: ActionBatchByChunkV2): Promise<Result<T[]>> }
+    }
+    // ... other methods
+  }
+  
+  tools: {
+    healthCheck: { make(options?: { requestId?: string }): Promise<boolean> }
+    ping: { make(options?: { requestId?: string }): Promise<number> }
+    // ... other methods
+  }
+}
+```
+
+#rest-api-ver3
+```ts
+// Unified interface for all classes
+interface B24Base {
+  actions: {
+    v3: {
+      call: { make(options: ActionCallV3): Promise<AjaxResult> }
+      callList: { make(options: ActionCallListV3): Promise<Result<T[]>> }
+      fetchList: { make(options: ActionFetchListV3): AsyncGenerator<T[]> }
+      batch: { make(options: ActionBatchV3): Promise<CallBatchResult> }
+      batchByChunk: { make(options: ActionBatchByChunkV3): Promise<Result<T[]>> }
+    }
+    // ... other methods
+  }
+  
+  tools: {
+    healthCheck: { make(options?: { requestId?: string }): Promise<boolean> }
+    ping: { make(options?: { requestId?: string }): Promise<number> }
+    // ... other methods
+  }
+}
+```
+
+## Key Features
+
+### Main API Methods
+
+- **`Call`** — basic method for calling any REST API methods
+- **`CallList`** — automatic retrieval of all data from list methods with pagination
+- **`FetchList`** — step-by-step processing of large data volumes via AsyncGenerator
+- **`Batch`** — execution of up to 50 commands in a single request
+- **`BatchByChunk`** — automatic splitting of large command sets into batches
+
+### Helper Tools
+
+- **`HealthCheck`** — checking REST API availability
+- **`Ping`** — measuring API response time
+
+## Choosing the Right Class
+
+### For Client Applications (Browser) :badge{.align-text-top label="client-side"}
+
+Use `B24Frame` — it's available in [Bitrix24 application iframes](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init):
+
+::rest-api-version-only
+#rest-api-ver2
+```ts
+// In an application embedded in Bitrix24
+async () => {
+  $b24 = await initializeB24Frame()
+  const response = await B24Frame.actions.v2.call.make({
+    method: 'crm.contact.get',
+    params: { id: 123 }
+  })
+}
+```
+
+#rest-api-ver3
+```ts
+// In an application embedded in Bitrix24
+async () => {
+  $b24 = await initializeB24Frame()
+  const response = await B24Frame.actions.v3.call.make({
+    method: 'tasks.task.get',
+    params: { id: 123 }
+  })
+}
+```
+
+### For Server Applications with Permanent Access :badge{.align-text-top label="server-side"}
+
+Use `B24Hook` with webhook:
+
+::rest-api-version-only
+#rest-api-ver2
+```ts
+import { B24Hook } from '@bitrix24/b24jssdk'
+
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+const response = await $b24.actions.v2.call.make({
+  method: 'crm.contact.get',
+  params: { id: 123 },
+  requestId: 'server-request'
+})
+```
+
+#rest-api-ver3
+```ts
+import { B24Hook } from '@bitrix24/b24jssdk'
+
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+const response = await $b24.actions.v3.call.make({
+  method: 'tasks.task.get',
+  params: { id: 123 },
+  requestId: 'server-request'
+})
+```
+
+### For Server Applications with OAuth Authentication :badge{.align-text-top label="server-side"} :badge{.align-text-top label="authentication"}
+
+Use `B24OAuth`:
+
+::rest-api-version-only
+#rest-api-ver2
+```ts
+import { B24OAuth } from '@bitrix24/b24jssdk'
+
+const $b24 = B24OAuth.fromConfig({
+  domain: 'your_domain.bitrix24.com',
+  clientId: 'your_client_id',
+  clientSecret: 'your_client_secret',
+  accessToken: 'current_token',
+  refreshToken: 'refresh_token'
+})
+
+const response = await $b24.actions.v2.call.make({
+  method: 'crm.contact.get',
+  params: { id: 123 },
+  requestId: 'oauth-request'
+})
+```
+
+#rest-api-ver3
+```ts
+import { B24OAuth } from '@bitrix24/b24jssdk'
+
+const $b24 = B24OAuth.fromConfig({
+  domain: 'your_domain.bitrix24.com',
+  clientId: 'your_client_id',
+  clientSecret: 'your_client_secret',
+  accessToken: 'current_token',
+  refreshToken: 'refresh_token'
+})
+
+const response = await $b24.actions.v3.call.make({
+  method: 'tasks.task.get',
+  params: { id: 123 },
+  requestId: 'oauth-request'
+})
+```
+
+## Common Methods (Available in All Classes)
+
+### Method Architecture
+
+| Method | Return Value | Memory | Usage | Suitable for |
+| --- | --- | --- | --- | --- |
+| `Call` | `Promise<AjaxResult>` | Minimum | Single calls | Retrieving individual elements, calling methods without pagination |
+| `CallList` | `Promise<Result<T[]>>` | All data in memory | `await response.getData()` | Small to medium data volumes, when all data is needed at once |
+| `FetchList` | `AsyncGenerator<T[]>` | Processing in parts | `for await (const chunk of generator)` | Large data volumes, stream processing, limited memory |
+| `Batch` | `Promise<CallBatchResult>` | Depends on volume | Batch operations up to 50 commands | Bulk operations, network request optimization |
+
+::rest-api-version-only
+#rest-api-ver2
+> **Automatic Warnings**
+>
+> SDK automatically tracks usage of methods available in REST API v3:
+>
+> ```json
+> "The method {method_name} is available in restApi:v3. It's worth migrating to the new API."
+> ```
+>
+> This allows gradual migration from deprecated API v2 to modern v3.
+
+## Method Selection Recommendations
+
+### For Data Retrieval
+
+1. **Individual elements** → Use `Call`
+2. **Small lists (up to 1000 records)** → Use `CallList`
+3. **Large lists (thousands of records)** → Use `FetchList`
+4. **Multiple individual elements** → Use `Batch`
+
+### For Data Modification
+
+1. **Single operations** → Use `Call`
+2. **Bulk operations (up to 50)** → Use `Batch`
+3. **Bulk operations (more than 50)** → Use `BatchByChunk`
+
+### For Debugging and Monitoring
+
+1. **Checking API availability** → Use `HealthCheck`
+2. **Measuring response speed** → Use `Ping`
+
+## Best Practices
+
+### Error Handling
+
+Always check `isSuccess` and handle errors:
+
+::rest-api-version-only
+#rest-api-ver2
+```typescript
+const response = await $b24.actions.v2.call.make({
+  method: 'some.method',
+  params: { /* parameters */ },
+  requestId: 'unique-id'
+})
+
+if (!response.isSuccess) {
+  console.error('Error:', response.getErrorMessages().join('; '))
+  // Additional error handling logic
+  return
+}
+
+// Working with successful result
+const data = response.getData()
+```
+
+#rest-api-ver3
+```typescript
+const response = await $b24.actions.v3.call.make({
+  method: 'some.method',
+  params: { /* parameters */ },
+  requestId: 'unique-id'
+})
+
+if (!response.isSuccess) {
+  console.error('Error:', response.getErrorMessages().join('; '))
+  // Additional error handling logic
+  return
+}
+
+// Working with successful result
+const data = response.getData()
+```
+
+### Request Management
+
+- `requestId` — always specify a unique request identifier for tracking and deduplication
+- **Logging** — use built-in logging mechanisms for debugging
+- **Timeouts** — configure timeouts for long operations
+
+## Migration from REST API v2 to v3
+
+Bitrix24 is gradually transitioning to REST API version 3. It is recommended to:
+
+1. **Monitor warnings** from SDK about method availability in v3
+2. **Use** [REST API v3 documentation](https://apidocs.bitrix24.com/api-reference/rest-v3/index.html){rel="&#x22;nofollow&#x22;"}
+3. **Plan migration** of existing projects
+
+## What's Next?
+
+- **Common methods** — You have already familiarized yourself with common methods available in all three classes
+- **Individual features** — Each class (`B24Frame`, `B24Hook`, `B24OAuth`) has its own unique methods and features that will be described in separate documentation sections
+- **Usage examples** — See specific examples for each usage scenario
+
+## Additional Resources
+
+- [Official Bitrix24 REST API Documentation](https://apidocs.bitrix24.com/){rel="&#x22;nofollow&#x22;"}
+- [Recommendations for working with large data](https://apidocs.bitrix24.com/settings/performance/huge-data.html){rel="&#x22;nofollow&#x22;"}
+
+---
+
+# CallV2.make
+
+> A method for making Bitrix24 REST API version 2 calls.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+> ⚠️ REST API DEPRECATION
+> strong,\[object Object],Bitrix24 is gradually transitioning to REST API version 3.
+>
+> - When calling methods [available in REST API v3](https://apidocs.bitrix24.com/api-reference/rest-v3/index.html){rel="&#x22;nofollow&#x22;"}, the method automatically logs a warning.
+
+## Overview
+
+Use `CallV2.make()` to call REST API version 2 methods.
+
+The method returns a `Promise` with an `AjaxResult` object containing response data, status, and error handling methods.
+
+```ts
+// Basic usage
+import { EnumCrmEntityTypeId } from '@bitrix24/b24jssdk'
+
+const response = await $b24.actions.v2.call.make({
+  method: 'crm.contact.get',
+  params: {
+    entityTypeId: EnumCrmEntityTypeId.contact,
+    id: 123
+  },
+  requestId: 'unique-request-id'
+})
+```
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionCallV2
+): Promise<AjaxResult<T>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`method`** | `string` | Yes | REST API method name (e.g., `crm.contact.get`, `tasks.task.get`). |
+| **`params`** | `TypeCallParams` | No | Object with parameters to pass to the REST API method. |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<AjaxResult<T>>` — a promise that resolves to an [`AjaxResult`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/core/http/ajax-result.ts){rel="&#x22;nofollow&#x22;"} object.
+
+This object provides:
+
+- `.getData(): Payload<T>` — returns the REST API response.
+- `.isSuccess: boolean` — flag indicating successful request execution.
+- `.getErrorMessages(): string[]` — array of error messages.
+- `.isMore(): boolean` — indicates the presence of additional data during pagination.
+
+## Key Concepts
+
+### Automatic Warning
+
+When calling methods that **are available in REST API version 3**, the system automatically logs a warning:
+
+```json
+"The method {method_name} is available in restApi:v3. It's worth migrating to the new API."
+```
+
+This indicates that you should consider migrating to the newer REST API version.
+
+## Error Handling
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const response = await $b24.actions.v2.call.make({
+  method: 'some.method',
+  params: { /* some_params */ },
+  requestId: 'unique-request-id'
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Getting a CRM Company
+
+```ts [call-rest-api-ver2.ts]
+import { B24Hook, EnumCrmEntityTypeId, LoggerFactory, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type Company = {
+  id: number
+  title: string
+  [key: string]: any
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:getCrmItem', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function getCrmItem(entityTypeId: number, itemId: number, requestId: string): Promise<Company | null> {
+  const response = await $b24.actions.v2.call.make<{ item: Company }>({
+    method: 'crm.item.get',
+    params: {
+      entityTypeId: entityTypeId,
+      id: itemId
+    },
+    requestId
+  })
+
+  if (!response.isSuccess) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM',
+      description: `Problem ${response.getErrorMessages().join('; ')}`,
+      status: 404
+    })
+  }
+
+  return (response.getData()!.result as { item: Company }).item
+}
+
+// Usage
+const itemId = 528
+const requestId = `crm-item-${itemId}`
+try {
+  const entity = await getCrmItem(EnumCrmEntityTypeId.company, itemId, requestId)
+  $logger.info(`Entity [${entity?.id}]`, { entity })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For working with lists:**&#x49;nstead of manually managing pagination use:
+ - [`CallList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver2.md) — automatically retrieves all pages and returns a single result.
+ - [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver2.md) — returns an async generator for step-by-step processing of large lists.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver2.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# CallV3.make
+
+> Method for making Bitrix24 REST API version 3 calls.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+Use `CallV3.make()` to call REST API version 3 methods.
+
+The method returns a `Promise` with an `AjaxResult` object containing response data, status, and error handling methods.
+
+```ts
+// Basic usage
+const response = await $b24.actions.v3.call.make({
+  method: 'tasks.task.get',
+  params: {
+    id: 123
+  },
+  requestId: 'unique-request-id'
+})
+```
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionCallV3
+): Promise<AjaxResult<T>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`method`** | `string` | Yes | REST API method name (e.g., `crm.contact.get`, `tasks.task.get`). |
+| **`params`** | `TypeCallParams` | No | Object with parameters to pass to the REST API method. |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<AjaxResult<T>>` — a promise that resolves to an [`AjaxResult`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/core/http/ajax-result.ts){rel="&#x22;nofollow&#x22;"} object.
+
+This object provides:
+
+- `.getData(): Payload<T>` — returns the REST API response.
+- `.isSuccess: boolean` — flag indicating successful request execution.
+- `.getErrorMessages(): string[]` — array of error messages.
+
+## Error Handling
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const response = await $b24.actions.v3.call.make({
+  method: 'some.method',
+  params: { /* some_params */ },
+  requestId: 'unique-request-id'
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Getting a Task
+
+```ts [call-rest-api-ver3.ts]
+import { B24Hook, LoggerFactory, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type Task = {
+  id: number
+  title: string
+  autocompleteSubTasks: boolean
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:taskGet', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function getTask(itemId: number, requestId: string): Promise<Task> {
+  const response = await $b24.actions.v3.call.make<{ item: Task }>({
+    method: 'tasks.task.get',
+    params: {
+      id: itemId,
+      select: ['id', 'title', 'autocompleteSubTasks']
+    },
+    requestId
+  })
+
+  if (!response.isSuccess) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM',
+      description: `Problem ${response.getErrorMessages().join('; ')}`,
+      status: 404
+    })
+  }
+
+  return (response.getData()!.result as { item: Task }).item
+}
+
+// Usage
+const itemId = 2
+const requestId = `task-${itemId}`
+try {
+  const entity = await getTask(itemId, requestId)
+  $logger.info(`Entity [${entity.id}]`, { entity })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For working with lists:**&#x49;nstead of manually managing pagination use:
+ - [`CallList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver3.md) — automatically retrieves all pages and returns a single result.
+ - [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver3.md) — returns an async generator for step-by-step processing of large lists.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver3.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# CallListV2.make
+
+> Method for quickly retrieving all data from list methods of Bitrix24 REST API version 2.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+> ⚠️ REST API DEPRECATION
+> strong,\[object Object],Bitrix24 is gradually transitioning to REST API version 3.
+>
+> - When calling methods [available in REST API v3](https://apidocs.bitrix24.com/api-reference/rest-v3/index.html){rel="&#x22;nofollow&#x22;"}, the method automatically logs a warning.
+
+## Overview
+
+When you need to retrieve all records from list methods of REST API version 2 with maximum efficiency and are ready to store the complete dataset in memory, use `CallListV2.make()`.
+
+This method automatically handles pagination and returns all data in a single array.
+
+> !NOTE
+> For importing, exporting, processing all elements and generating reports, we recommend using [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver2.md) - it returns an asynchronous generator for step-by-step processing of large lists.
+
+```ts
+// Basic usage
+import { EnumCrmEntityTypeId } from '@bitrix24/b24jssdk'
+
+const response = await $b24.actions.v2.callList.make({
+  method: 'crm.item.list',
+  params: {
+    entityTypeId:  EnumCrmEntityTypeId.deal,
+    filter: { '>opportunity': 10000 }
+  },
+  idKey: 'id',
+  customKeyForResult: 'items',
+  requestId: 'unique-request-id'
+})
+```
+
+### When to Use CallListV2.make()
+
+1. **Small to medium data volumes**: When the total number of records does not exceed several thousand.
+2. **Simple processing**: When you need simple access to all data at once.
+3. **Data aggregation**: When you need to perform operations on the entire dataset (summation, grouping, etc.).
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionCallListV2
+): Promise<Result<T[]>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`method`** | `string` | Yes | REST API method name that returns a data list (e.g., `crm.contact.list`, `tasks.task.list`). |
+| **`params`** | `Omit<TypeCallParams, 'start'>` | No | Request parameters, excluding the `start` parameter, as the method is designed to retrieve all data in a single call. Use `filter`, `order`, `select` to control the selection. |
+| **`idKey`** | `string` | No | Name of the field containing the unique element identifier. Default: `'ID'` (uppercase). Can also be `'id'` (lowercase) or another field depending on the REST API data structure. |
+| **`customKeyForResult`** | `string` | No | Custom key indicating that the REST API response will be selected by this field. For example: `items` for a list of CRM elements. |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<Result<T[]>>` — a promise that resolves to a [`Result<T[]>`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/core/result.ts){rel="&#x22;nofollow&#x22;"} object containing an array of all retrieved elements.
+
+This object provides:
+
+- `.getData(): T[]` — returns an array of all retrieved elements.
+- `.isSuccess: boolean` — flag indicating successful execution of all requests.
+- `.getErrorMessages(): string[]` — array of error messages.
+
+## Key Concepts
+
+### Automatic Warning
+
+When calling methods that **are available in REST API version 3**, the system automatically logs a warning:
+
+```json
+"The method {method_name} is available in restApi:v3. It's worth migrating to the new API."
+```
+
+This indicates that you should consider migrating to the newer REST API version.
+
+### Performance Optimization
+
+The method implements the [Bitrix24 recommended algorithm](https://apidocs.bitrix24.com/settings/performance/huge-data.html){rel="&#x22;nofollow&#x22;"} for efficient work with large data volumes:
+
+1. `start: -1`: Disables counting the total number of records, significantly speeding up query execution.
+2. **Filtering by increasing ID**: Each subsequent query uses a `>ID` filter with the ID of the last retrieved element.
+3. **Automatic data end detection**: Requests stop when an empty array is received or the number of elements is less than the page size (`50`).
+
+### REST API v2 Response Structure
+
+In REST API version 2, various methods may return data in different structures:
+
+- **Direct array**: `{ result: [...] }`
+- **Grouped array**: `{ result: { items: [...] } }`
+
+The `customKeyForResult` parameter allows you to specify the key where the data is located in the response.
+
+### Limitations
+
+- **Page size**: Fixed limitation of Bitrix24 REST API version 2 — `50` records per request.
+- **Sorting**: The method always adds sorting by `idKey` in ascending order for correct pagination.
+- **Only for list methods**: Intended only for methods that return data arrays.
+
+## Error Handling
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const response = await $b24.actions.v2.callList.make({
+  method: 'some.method',
+  params: { /* some_params */ },
+  idKey: 'id',
+  customKeyForResult: 'items',
+  requestId: 'unique-request-id'
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Getting all companies with filtering
+
+```ts [AllCrmItems.ts]
+import { B24Hook, EnumCrmEntityTypeId, LoggerFactory, Text, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type Company = {
+  id: number
+  title: string
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:AllCrmItems', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function getCrmItemList(requestId: string): Promise<Company[]> {
+  const sixMonthAgo = new Date()
+  sixMonthAgo.setMonth((new Date()).getMonth() - 6)
+  sixMonthAgo.setHours(0, 0, 0)
+
+  const response = await $b24.actions.v2.callList.make<Company>({
+    method: 'crm.item.list',
+    params: {
+      entityTypeId: EnumCrmEntityTypeId.company,
+      filter: {
+        // use some filter by title
+        '=%title': 'Prime%',
+        '>=createdTime': Text.toB24Format(sixMonthAgo) // created at least 6 months ago
+      },
+      select: ['id', 'title']
+    },
+    idKey: 'id',
+    customKeyForResult: 'items',
+    requestId
+  })
+
+  if (!response.isSuccess) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM'
+      description: `Problem ${response.getErrorMessages().join('; ')}`,
+      status: 404
+    })
+  }
+
+  return response.getData()
+}
+
+// Usage
+const requestId = 'some-crm-item-list'
+try {
+  const list = await getCrmItemList(requestId)
+  $logger.info(`List [${list?.length}]`, { requestId, list })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For working with lists:**&#x49;nstead of manually managing pagination use:
+ - [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver2.md) — returns an async generator for step-by-step processing of large lists.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver2.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# CallListV3.make
+
+> Method for quickly retrieving all data from list methods of Bitrix24 REST API version 3.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+> !NOTE
+> It's important to note that REST API version 3 allows you to retrieve up to 1000 elements in a single request using the pagination `parameter: { limit: 1000, page: 1 }`.
+
+## Overview
+
+When you need to retrieve all records from list methods of REST API version 3 with maximum efficiency and are ready to store the complete dataset in memory, use `CallListV3.make()`.
+
+This method automatically handles pagination and returns all data in a single array.
+
+> !NOTE
+> For importing, exporting, processing all elements and generating reports, we recommend using [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver3.md) - it returns an asynchronous generator for step-by-step processing of large lists.
+
+```ts
+// Basic usage
+const response = await $b24.actions.v3.callList.make({
+  method: 'main.eventlog.list',
+  params: {
+    filter: [
+      ['userId', '=', 1]
+    ],
+    select: ['id', 'userId']
+  },
+  idKey: 'id',
+  customKeyForResult: 'items',
+  requestId: 'unique-request-id',
+  limit: 600
+})
+```
+
+### When to Use CallListV3.make()
+
+1. **Small to medium data volumes**: When the total number of records does not exceed several thousand.
+2. **Simple processing**: When you need simple access to all data at once.
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionCallListV3
+): Promise<Result<T[]>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`method`** | `string` | Yes | REST API method name that returns a data list (e.g., `crm.contact.list`, `tasks.task.list`). |
+| **`params`** | `Omit<TypeCallParams, 'pagination'>` | No | Request parameters, excluding the `pagination` parameter, as the method is designed to retrieve all data in a single call. Use `filter`, `order`, `select` to control the selection. |
+| **`idKey`** | `string` | No | Name of the field containing the unique element identifier. Default: `'id'`. Can also be another field depending on the REST API data structure. |
+| **`customKeyForResult`** | `string` | Yes | Custom key indicating that the REST API response will be selected by this field. For example: `items` for a list of CRM elements. |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+| **`limit`** | `number` | No | How many records to retrieve at a time. Default is `50`. Maximum is `1000`. |
+
+### Return Value
+
+`Promise<Result<T[]>>` — a promise that resolves to a [`Result<T[]>`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/core/result.ts){rel="&#x22;nofollow&#x22;"} object containing an array of all retrieved elements.
+
+This object provides:
+
+- `.getData(): T[]` — returns an array of all retrieved elements.
+- `.isSuccess: boolean` — flag indicating successful execution of all requests.
+- `.getErrorMessages(): string[]` — array of error messages.
+
+## Key Concepts
+
+### Performance Optimization
+
+The method implements the [Bitrix24 recommended algorithm](https://apidocs.bitrix24.com/settings/performance/huge-data.html){rel="&#x22;nofollow&#x22;"} for efficient work with large data volumes:
+
+1. **Filtering by increasing id**: Each subsequent query uses a `>id` filter with the id of the last retrieved element.
+2. **Automatic data end detection**: Requests stop when an empty array is received or the number of elements is less than the page size (`options.limit`).
+
+### REST API v3 Response Structure
+
+> !NOTE
+> The `customKeyForResult` parameter is retained for backward compatibility. In the future, after analyzing real usage, a decision will be made regarding its necessity.
+
+In REST API version 3, various methods return data in the same structures:
+
+- **Grouped array**: `{ result: { items: [...] } }`
+
+The `customKeyForResult` parameter allows you to specify the key where the data is located in the response.
+
+### Limitations
+
+- **Page size**: Bitrix24 REST API version 3 limitation — maximum `1000` records per request.
+- **Sorting**: The method always adds sorting by `idKey` in ascending order for correct pagination.
+- **Only for list methods**: Intended only for methods that return data arrays.
+
+## Error Handling
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const response = await $b24.actions.v3.callList.make({
+  method: 'some.method',
+  params: { /* some_params */ },
+  idKey: 'id',
+  customKeyForResult: 'items',
+  requestId: 'unique-request-id',
+  limit: 600
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Getting all Event Log Items with filtering
+
+```ts [AllMainEventLogItems.ts]
+import { B24Hook, LoggerFactory, Text, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type MainEventLogItem = {
+  id: number
+  userId: number
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:AllMainEventLogItems', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function getMainEventLogItemList(requestId: string): Promise<MainEventLogItem[]> {
+  const sixMonthAgo = new Date()
+  sixMonthAgo.setMonth((new Date()).getMonth() - 6)
+  sixMonthAgo.setHours(0, 0, 0)
+
+  const response = await $b24.actions.v3.callList.make<MainEventLogItem>({
+    method: 'main.eventlog.list',
+    params: {
+      filter: [
+        ['timestampX', '>=', Text.toB24Format(sixMonthAgo)] // created at least 6 months ago
+      ],
+      select: ['id', 'userId']
+    },
+    idKey: 'id',
+    customKeyForResult: 'items',
+    requestId,
+    limit: 60
+  })
+
+  if (!response.isSuccess) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM'
+      description: `Problem ${response.getErrorMessages().join('; ')}`,
+      status: 404
+    })
+  }
+
+  return response.getData()
+}
+
+// Usage
+const requestId = 'some-main-event-log-item-list'
+try {
+  const list = await getMainEventLogItemList(requestId)
+  $logger.info(`List [${list?.length}]`, { requestId, list })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For working with lists:**&#x49;nstead of manually managing pagination use:
+ - [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver3.md) — returns an async generator for step-by-step processing of large lists.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver3.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# FetchListV2.make
+
+> Returns an AsyncGenerator that allows processing data from list methods of Bitrix24 REST API version 2 as it is received without loading the entire array into memory at once. This is especially useful when working with very large volumes of data.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+> ⚠️ REST API DEPRECATION
+> strong,\[object Object],Bitrix24 is gradually transitioning to REST API version 3.
+>
+> - When calling methods [available in REST API v3](https://apidocs.bitrix24.com/api-reference/rest-v3/index.html){rel="&#x22;nofollow&#x22;"}, the method automatically logs a warning.
+
+## Overview
+
+When you need to process large volumes of data from list methods of REST API version 2 in parts (chunks), use `FetchListV2.make()`.
+
+This method implements a fast algorithm for iterating over large data sets without loading all data into memory at once. Each iteration returns the next page/batch of results until all data is received.
+
+```ts
+// Basic usage
+import { EnumCrmEntityTypeId } from '@bitrix24/b24jssdk'
+
+const generator = $b24.actions.v2.fetchList.make({
+  method: 'crm.item.list',
+  params: {
+    entityTypeId: EnumCrmEntityTypeId.deal,
+    filter: { '>opportunity': 10000 }
+  },
+  idKey: 'id',
+  customKeyForResult: 'items',
+  requestId: 'unique-request-id'
+})
+
+for await (const chunk of generator) {
+  // Process chunk (e.g., save to database, analyze, etc.)
+  console.log(`Processing ${chunk.length} items`)
+}
+```
+
+### When to Use FetchListV2.make()
+
+1. **Very large data volumes**: When the number of records is in the thousands or tens of thousands.
+2. **Stream processing**: When data needs to be processed as it arrives.
+3. **Long operations**: When processing each record requires significant time.
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionFetchListV2
+): AsyncGenerator<T[]>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`method`** | `string` | Yes | REST API method name that returns a data list (e.g., `crm.contact.list`, `tasks.task.list`). |
+| **`params`** | `Omit<TypeCallParams, 'start'>` | No | Request parameters, excluding the `start` parameter, as the method is designed to retrieve all data in a single call. Use `filter`, `order`, `select` to control the selection. |
+| **`idKey`** | `string` | No | Name of the field containing the unique element identifier. Default: `'ID'` (uppercase). Can also be `'id'` (lowercase) or another field depending on the REST API data structure. |
+| **`customKeyForResult`** | `string` | No | Custom key indicating that the REST API response will be selected by this field. For example: `items` for a list of CRM elements. |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`AsyncGenerator<T[]>` — an asynchronous generator that returns data chunks as arrays of type `T`.
+
+Each iteration of the generator returns:
+
+- An array of elements (chunk) with up to `50` records.
+- The generator completes when all data is received.
+
+## Key Concepts
+
+### Automatic Warning
+
+When calling methods that **are available in REST API version 3**, the system automatically logs a warning:
+
+```json
+"The method {method_name} is available in restApi:v3. It's worth migrating to the new API."
+```
+
+This indicates that you should consider migrating to the newer REST API version.
+
+### AsyncGenerator vs Promise
+
+Unlike `CallListV2.make()`, which returns a `Promise` with all data at once, `FetchListV2.make()` returns an asynchronous generator:
+
+| Aspect | `CallListV2.make()` | `FetchListV2.make()` |
+| --- | --- | --- |
+| **Return Value** | `Promise<Result<T[]>>` | `AsyncGenerator<T[]>` |
+| **Memory** | Loads all data into memory | Processes data in parts |
+| **Usage** | `await response.getData()` | `for await (const chunk of generator)` |
+| **Suitable for** | Small to medium data volumes | Very large data volumes |
+
+### Performance Optimization
+
+The method implements the [Bitrix24 recommended algorithm](https://apidocs.bitrix24.com/settings/performance/huge-data.html){rel="&#x22;nofollow&#x22;"} for efficient work with large data volumes:
+
+1. `start: -1`: Disables counting the total number of records, significantly speeding up query execution.
+2. **Filtering by increasing ID**: Each subsequent query uses a `>ID` filter with the ID of the last retrieved element.
+3. **Stream processing**: Data is processed as it is received, saving memory.
+4. **Automatic data end detection**: Requests stop when an empty array is received or the number of elements is less than the page size (`50`).
+
+### REST API v2 Response Structure
+
+In REST API version 2, various methods may return data in different structures:
+
+- **Direct array**: `{ result: [...] }`
+- **Grouped array**: `{ result: { items: [...] } }`
+
+The `customKeyForResult` parameter allows you to specify the key where the data is located in the response.
+
+### Limitations
+
+- **Page size**: Fixed limitation of Bitrix24 REST API version 2 — `50` records per request.
+- **Sorting**: The method always adds sorting by `idKey` in ascending order for correct pagination.
+- **Only for list methods**: Intended only for methods that return data arrays.
+
+## Error Handling
+
+Since the method returns an asynchronous generator, errors are handled differently than in `CallListV2.make()`:
+
+```ts
+try {
+  const generator = $b24.actions.v2.fetchList.make({
+    method: 'some.method',
+    params: { /* some_params */ },
+    idKey: 'id',
+    customKeyForResult: 'items',
+    requestId: 'unique-request-id'
+  })
+
+  for await (const chunk of generator) {
+    // Process chunk (e.g., save to database, analyze, etc.)
+    console.log(`Processing ${chunk.length} items`)
+  }
+} catch (error) {
+  // Handling error
+  if (
+    error instanceof SdkError
+    && error.code === 'JSSDK_CORE_B24_FETCH_LIST_METHOD_API_V2'
+  ) {
+    console.error(`${error.message}`, { code: error.code })
+  } else {
+    console.error('Some error', error)
+  }
+}
+```
+
+## Examples
+
+### Step-by-step processing of a large number of companies
+
+```ts [ProcessCrmItems.ts]
+import { B24Hook, EnumCrmEntityTypeId, LoggerFactory, Text, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type Company = {
+  id: number
+  title: string
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:ProcessCrmItems', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function processCrmItemList(): Promise<void> {
+  let batchNumber = 0
+  let totalItems = 0
+
+  const sixMonthAgo = new Date()
+  sixMonthAgo.setMonth((new Date()).getMonth() - 6)
+  sixMonthAgo.setHours(0, 0, 0)
+  
+  const requestId = 'some-crm-item-list'
+  
+  try {
+    const generator = $b24.actions.v2.fetchList.make<Company>({
+      method: 'crm.item.list',
+      params: {
+        entityTypeId: EnumCrmEntityTypeId.company,
+        filter: {
+          // use some filter by title
+          '=%title': 'Prime%',
+          '>=createdTime': Text.toB24Format(sixMonthAgo) // created at least 6 months ago
+        },
+        select: ['id', 'title']
+      },
+      idKey: 'id',
+      customKeyForResult: 'items',
+      requestId
+    })
+    
+    for await (const chunk of generator) {
+      batchNumber++
+      totalItems += chunk.length
+
+      $logger.info(`Processing batch #${batchNumber}`, {
+        batchSize: chunk.length,
+        totalSoFar: totalItems
+      })
+      
+      // Example: saving to database
+      await saveToDatabase(chunk)
+      
+      // Example: sending to message queue
+      await sendToMessageQueue(chunk)
+    }
+    
+    $logger.notice(`Processed ${totalItems} elements in ${batchNumber} batches`)
+  } catch (error) {
+    if (error instanceof SdkError) {
+      $logger.error(`Processing error: ${error.message}`, {
+        code: error.code,
+        batchNumber,
+        totalItems
+      })
+    } else {
+      $logger.error('Unknown error', { error, batchNumber, totalItems })
+    }
+    throw error
+  }
+}
+
+// Helper functions
+// Database save implementation
+async function saveToDatabase(items: Company[]): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 100)) // Simulation
+}
+
+// Message queue send implementation
+async function sendToMessageQueue(items: Company[]): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 50)) // Simulation
+}
+
+// Usage
+try {
+  await processCrmItemList()
+} catch (error) {
+  $logger.critical('A problem occurred', { error })
+}
+```
+
+## Alternatives and Recommendations
+
+- **Chunk size**: Bitrix24 REST API version 2 always returns up to 50 records per request.
+- **Optimal concurrency**: When processing data from the generator, limited concurrency (3-5 simultaneous operations) is recommended.
+- **Error handling**: Always handle errors inside the `for await...of` loop to prevent the entire process from stopping.
+- **Progress monitoring**: Implement progress logging for long-running operations.
+- **For sequential requests**: Use [`Call`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver2.md) for single calls.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver2.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# FetchListV3.make
+
+> Returns an AsyncGenerator that allows processing data from list methods of Bitrix24 REST API version 3 as it is received without loading the entire array into memory at once. This is especially useful when working with very large volumes of data.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+When you need to process large volumes of data from list methods of REST API version 3 in parts (chunks), use `FetchListV3.make()`.
+
+This method implements a fast algorithm for iterating over large data sets without loading all data into memory at once. Each iteration returns the next page/batch of results until all data is received.
+
+```ts
+// Basic usage
+const generator = $b24.actions.v3.fetchList.make({
+  method: 'main.eventlog.list',
+  params: {
+    filter: [
+      ['userId', '=', 1]
+    ],
+    select: ['id', 'userId']
+  },
+  idKey: 'id',
+  customKeyForResult: 'items',
+  requestId: 'unique-request-id',
+  limit: 600
+})
+
+for await (const chunk of generator) {
+  // Process chunk (e.g., save to database, analyze, etc.)
+  console.log(`Processing ${chunk.length} items`)
+}
+```
+
+### When to Use FetchListV3.make()
+
+1. **Very large data volumes**: When the number of records is in the thousands or tens of thousands.
+2. **Stream processing**: When data needs to be processed as it arrives.
+3. **Long operations**: When processing each record requires significant time.
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionFetchListV3
+): AsyncGenerator<T[]>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`method`** | `string` | Yes | REST API method name that returns a data list (e.g., `crm.contact.list`, `tasks.task.list`). |
+| **`params`** | `Omit<TypeCallParams, 'pagination'>` | No | Request parameters, excluding the `pagination` parameter, as the method is designed to retrieve all data in a single call. Use `filter`, `order`, `select` to control the selection. |
+| **`idKey`** | `string` | No | Name of the field containing the unique element identifier. Default: `'id'`. Can also be another field depending on the REST API data structure. |
+| **`customKeyForResult`** | `string` | Yes | Custom key indicating that the REST API response will be selected by this field. For example: `items` for a list of CRM elements. |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+| **`limit`** | `number` | No | How many records to retrieve at a time. Default is `50`. Maximum is `1000`. |
+
+### Return Value
+
+`AsyncGenerator<T[]>` — an asynchronous generator that returns data chunks as arrays of type `T`.
+
+Each iteration of the generator returns:
+
+- An array of elements (chunk) with up to `options.limit` records.
+- The generator completes when all data is received.
+
+## Key Concepts
+
+### AsyncGenerator vs Promise
+
+Unlike `CallListV3.make()`, which returns a `Promise` with all data at once, `FetchListV3.make()` returns an asynchronous generator:
+
+| Aspect | `CallListV3.make()` | `FetchListV3.make()` |
+| --- | --- | --- |
+| **Return Value** | `Promise<Result<T[]>>` | `AsyncGenerator<T[]>` |
+| **Memory** | Loads all data into memory | Processes data in parts |
+| **Usage** | `await response.getData()` | `for await (const chunk of generator)` |
+| **Suitable for** | Small to medium data volumes | Very large data volumes |
+
+### Performance Optimization
+
+The method implements the [Bitrix24 recommended algorithm](https://apidocs.bitrix24.com/settings/performance/huge-data.html){rel="&#x22;nofollow&#x22;"} for efficient work with large data volumes:
+
+1. **Filtering by increasing id**: Each subsequent query uses a `>id` filter with the id of the last retrieved element.
+2. **Stream processing**: Data is processed as it is received, saving memory.
+3. **Automatic data end detection**: Requests stop when an empty array is received or the number of elements is less than the page size (`options.limit`).
+
+### REST API v3 Response Structure
+
+> !NOTE
+> The `customKeyForResult` parameter is retained for backward compatibility. In the future, after analyzing real usage, a decision will be made regarding its necessity.
+
+In REST API version 3, various methods return data in the same structures:
+
+- **Grouped array**: `{ result: { items: [...] } }`
+
+The `customKeyForResult` parameter allows you to specify the key where the data is located in the response.
+
+### Limitations
+
+- **Page size**: Bitrix24 REST API version 3 limitation — maximum `1000` records per request.
+- **Sorting**: The method always adds sorting by `idKey` in ascending order for correct pagination.
+- **Only for list methods**: Intended only for methods that return data arrays.
+
+## Error Handling
+
+Since the method returns an asynchronous generator, errors are handled differently than in `CallListV3.make()`:
+
+```ts
+try {
+  const generator = $b24.actions.v3.fetchList.make({
+    method: 'some.method',
+    params: { /* some_params */ },
+    idKey: 'id',
+    customKeyForResult: 'items',
+    requestId: 'unique-request-id',
+    limit: 600
+  })
+
+  for await (const chunk of generator) {
+    // Process chunk (e.g., save to database, analyze, etc.)
+    console.log(`Processing ${chunk.length} items`)
+  }
+} catch (error) {
+  // Handling error
+  if (
+    error instanceof SdkError
+    && error.code === 'JSSDK_CORE_B24_FETCH_LIST_METHOD_API_V3'
+  ) {
+    console.error(`${error.message}`, { code: error.code })
+  } else {
+    console.error('Some error', error)
+  }
+}
+```
+
+## Examples
+
+### Step-by-step processing of a large number of Event Log Items
+
+```ts [ProcessMainEventLogItems.ts]
+import { B24Hook, LoggerFactory, Text, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type MainEventLogItem = {
+  id: number
+  userId: number
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:ProcessMainEventLogItems', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function processMainEventLogItem(): Promise<void> {
+  let batchNumber = 0
+  let totalItems = 0
+
+  const sixMonthAgo = new Date()
+  sixMonthAgo.setMonth((new Date()).getMonth() - 6)
+  sixMonthAgo.setHours(0, 0, 0)
+  
+  const requestId = 'some-main-event-log-item-list'
+  
+  try {
+    const generator = $b24.actions.v3.fetchList.make<MainEventLogItem>({
+      method: 'main.eventlog.list',
+      params: {
+        filter: [
+          ['timestampX', '>=', Text.toB24Format(sixMonthAgo)] // created at least 6 months ago
+        ],
+        select: ['id', 'userId']
+      },
+      idKey: 'id',
+      customKeyForResult: 'items',
+      requestId,
+      limit: 60
+    })
+    
+    for await (const chunk of generator) {
+      batchNumber++
+      totalItems += chunk.length
+
+      $logger.info(`Processing batch #${batchNumber}`, {
+        batchSize: chunk.length,
+        totalSoFar: totalItems
+      })
+      
+      // Example: saving to database
+      await saveToDatabase(chunk)
+      
+      // Example: sending to message queue
+      await sendToMessageQueue(chunk)
+    }
+    
+    $logger.notice(`Processed ${totalItems} elements in ${batchNumber} batches`)
+  } catch (error) {
+    if (error instanceof SdkError) {
+      $logger.error(`Processing error: ${error.message}`, {
+        code: error.code,
+        batchNumber,
+        totalItems
+      })
+    } else {
+      $logger.error('Unknown error', { error, batchNumber, totalItems })
+    }
+    throw error
+  }
+}
+
+// Helper functions
+// Database save implementation
+async function saveToDatabase(items: MainEventLogItem[]): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 100)) // Simulation
+}
+
+// Message queue send implementation
+async function sendToMessageQueue(items: MainEventLogItem[]): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 50)) // Simulation
+}
+
+// Usage
+try {
+  await processMainEventLogItem()
+} catch (error) {
+  $logger.critical('A problem occurred', { error })
+}
+```
+
+## Alternatives and Recommendations
+
+- **Chunk size**: Bitrix24 REST API version 3 always returns up to 50 records per request.
+- **Optimal concurrency**: When processing data from the generator, limited concurrency (3-5 simultaneous operations) is recommended.
+- **Error handling**: Always handle errors inside the `for await...of` loop to prevent the entire process from stopping.
+- **Progress monitoring**: Implement progress logging for long-running operations.
+- **For sequential requests**: Use [`Call`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver3.md) for single calls.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver3.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# BatchV2.make
+
+> Method for executing batch requests to Bitrix24 REST API version 2. Allows executing up to 50 commands in a single API call.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+Use `BatchV2.make()` to execute up to 50 REST API commands in a single request. This is especially useful when you need to retrieve or update large amounts of data while minimizing network requests and adhering to REST API limits.
+
+```ts
+// Basic usage
+import { EnumCrmEntityTypeId } from '@bitrix24/b24jssdk'
+
+const response = await $b24.actions.v2.batch.make({
+  calls: [
+    ['crm.item.get', { entityTypeId: EnumCrmEntityTypeId.contact, id: 1 }],
+    ['crm.item.get', { entityTypeId: EnumCrmEntityTypeId.contact, id: 2 }]
+  ],
+  options: {
+    isHaltOnError: true,
+    returnAjaxResult: true,
+    requestId: 'unique-request-id'
+  }
+})
+```
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionBatchV2
+): Promise<CallBatchResult<T>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`calls`** | `BatchCommandsArrayUniversal | BatchCommandsObjectUniversal | BatchNamedCommandsUniversal` | Yes | Commands to execute in the batch. Supports several [formats](https://bitrix24.github.io/b24jssdk/#command-formats-optionscalls). |
+| **`options`** | `IB24BatchOptions` | No | [Additional options](https://bitrix24.github.io/b24jssdk/#batch-request-options-optionsoptions) for batch request execution. |
+
+### Command Formats (`options.calls`)
+
+#### 1. Array of tuples (`BatchCommandsArrayUniversal`)
+
+```ts
+calls: [
+  ['method1', params1],
+  ['method2', params2],
+  // ...
+]
+```
+
+#### 2. Array of objects (`BatchCommandsObjectUniversal`)
+
+```ts
+calls: [
+  { method: 'method1', params: params1 },
+  { method: 'method2', params: params2 },
+  // ...
+]
+```
+
+#### 3. Object with named commands (`BatchNamedCommandsUniversal`)
+
+```ts
+calls: {
+  command1: { method: 'method1', params: params1 },
+  command2: ['method2', params2],
+  // ...
+}
+```
+
+### Batch Request Options (`options.options`)
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| **`isHaltOnError`** | `boolean` | `true` | Whether to stop execution on the first error. |
+| **`returnAjaxResult`** | `boolean` | `false` | Whether to return an `AjaxResult` object instead of data. |
+| **`requestId`** | `string` | — | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<CallBatchResult<T>>` — a promise that resolves to a `CallBatchResult<T>` object.
+
+The result structure depends on the input data format:
+
+- **For array of commands**: array of results in the same order.
+- **For named commands**: object with keys corresponding to command names.
+
+## Error Handling
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const response = await $b24.actions.v2.batch.make({
+  calls: [
+    { method: 'crm.item.get', params: { entityTypeId: EnumCrmEntityTypeId.contact, id: 1 } },
+    { method: 'crm.item.get', params: { entityTypeId: EnumCrmEntityTypeId.contact, id: 2 } }
+  ],
+  options: {
+    isHaltOnError: true,
+    returnAjaxResult: true,
+    requestId: 'unique-request-id'
+  }
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Getting Multiple CRM Companies
+
+```ts [batch-rest-api-ver2.ts]
+import type { AjaxResult, Result, BatchCommandsArrayUniversal } from '@bitrix24/b24jssdk'
+import { B24Hook, EnumCrmEntityTypeId, LoggerFactory, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type Company = {
+  id: number
+  title: string
+  [key: string]: any
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:batchCrmItems', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function getMultipleItems(itemIds: number[], requestId: string): Promise<Company[]> {
+  if (itemIds.length < 1 || itemIds.length > 50) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM',
+      description: `The number of elements must be between 1 and 50`,
+      status: 404
+    })
+  }
+
+  const batchCalls: BatchCommandsArrayUniversal = itemIds.map(id => [
+    'crm.item.get',
+    {
+      entityTypeId: EnumCrmEntityTypeId.company,
+      id
+    }
+  ])
+
+  const response = await $b24.actions.v2.batch.make<{ item: Company }>({
+    calls: batchCalls,
+    options: {
+      isHaltOnError: true,
+      returnAjaxResult: true,
+      requestId
+    }
+  })
+
+  if (!response.isSuccess) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM',
+      description: `Problem ${response.getErrorMessages().join('; ')}`,
+      status: 404
+    })
+  }
+
+  const resultData = (response as Result<AjaxResult<{ item: Company }>[]>).getData()!
+  const results: Company[] = []
+  resultData.forEach((resultRow, _index) => {
+    if (resultRow.isSuccess) {
+      results.push((resultRow.getData()!.result as { item: Company }).item)
+    }
+  })
+
+  return results
+}
+
+// Usage
+const requestId = 'batch/crm.item.get'
+try {
+  const itemIds = [2, 4]
+  const items = await getMultipleItems(itemIds, requestId)
+
+  $logger.info(`Retrieved ${items.length} items`, {
+    expected: itemIds.length,
+    retrieved: items.length,
+    items: items.map(c => ({ id: c.id, title: c.title }))
+  })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+### Init Data Storage
+
+This code automates the creation and initialization of data storages in Bitrix24 via the REST API.
+
+It checks the existence of the specified storages and, if they don't exist, creates them along with the specified properties, using batch requests for efficiency.
+
+```ts [batch-rest-api-ver2-data-storage.ts]
+import type { BatchNamedCommandsUniversal } from '@bitrix24/b24jssdk'
+import { B24Hook, LoggerFactory, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type DataStorageParams = {
+  ENTITY: string
+  NAME: string
+  ACCESS: Record<string, 'R' | 'W' | 'X'>
+}
+
+type PropertyParams = {
+  PROPERTY: string
+  NAME: string
+  TYPE: 'S' | 'N' | 'F'
+}
+
+type DataStorage = {
+  isInit: boolean
+  dataStorage: DataStorageParams
+  props: PropertyParams[]
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:batchDataStorage', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function initDataStorageList(dataStorageMap: Map<string, DataStorage>, requestId: string): Promise<void> {
+  // get current list
+  const response = await $b24.actions.v2.call.make<{ ENTITY: string, NAME: string }[]>({
+    method: 'entity.get',
+    params: {},
+    requestId: `${requestId}/init:getCurrentList`
+  })
+
+  if (!response.isSuccess) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM',
+      description: `Problem ${response.getErrorMessages().join('; ')}`,
+      status: 404
+    })
+  }
+
+  const currentDataStorageList = response.getData()!.result as { ENTITY: string, NAME: string }[]
+
+  for (const dataStorage of dataStorageMap.values()) {
+    const isInit = currentDataStorageList.some(row => row.ENTITY === dataStorage.dataStorage.ENTITY)
+    if (isInit) {
+      dataStorage.isInit = true
+    } else {
+      await initDataStorage(dataStorage, requestId)
+      dataStorage.isInit = true
+    }
+  }
+}
+
+async function initDataStorage(dataStorage: DataStorage, requestId: string): Promise<void> {
+  const callBatch: BatchNamedCommandsUniversal = {
+    AddEntity: {
+      method: 'entity.add',
+      params: dataStorage.dataStorage
+    }
+  }
+
+  for (const property of dataStorage.props) {
+    callBatch[`prop${property.PROPERTY}`] = {
+      method: 'entity.item.property.add',
+      params: {
+        ...property,
+        ENTITY: dataStorage.dataStorage.ENTITY
+      }
+    }
+  }
+
+  const response = await $b24.actions.v2.batch.make({
+    calls: callBatch,
+    options: {
+      isHaltOnError: true,
+      returnAjaxResult: false,
+      requestId: `${requestId}/init:${dataStorage.dataStorage.ENTITY}`
+    }
+  })
+
+  if (!response.isSuccess) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM',
+      description: `Problem ${response.getErrorMessages().join('; ')}`,
+      status: 404
+    })
+  }
+}
+
+// Usage
+const requestId = 'batch/DataStorage'
+try {
+  const dataStorageMap: Map<string, DataStorage> = new Map([
+    ['DataStorage1', {
+      isInit: false,
+      dataStorage: {
+        ENTITY: 'DS1',
+        NAME: 'Data Storage 1',
+        ACCESS: {
+          U1: 'X',
+          AU: 'R'
+        }
+      },
+      props: [
+        {
+          PROPERTY: 'PropertyN',
+          NAME: 'Property N',
+          TYPE: 'N'
+        }
+      ]
+    }],
+    ['DataStorage2', {
+      isInit: false,
+      dataStorage: {
+        ENTITY: 'DS2',
+        NAME: 'Data Storage 2',
+        ACCESS: {
+          U1: 'X',
+          AU: 'R'
+        }
+      },
+      props: [
+        {
+          PROPERTY: 'PropertyS',
+          NAME: 'Property S',
+          TYPE: 'S'
+        }
+      ]
+    }],
+    ['DataStorage3', {
+      isInit: false,
+      dataStorage: {
+        ENTITY: 'DS3',
+        NAME: 'Data Storage 3',
+        ACCESS: {
+          U1: 'X',
+          AU: 'R'
+        }
+      },
+      props: [
+        {
+          PROPERTY: 'PropertyF',
+          NAME: 'Property F',
+          TYPE: 'F'
+        }
+      ]
+    }]
+  ])
+
+  await initDataStorageList(dataStorageMap, requestId)
+
+  $logger.info(`dataStorageList`, {
+    items: [...dataStorageMap.values()].map(c => ({
+      entity: c.dataStorage.ENTITY,
+      isInit: c.isInit,
+      title: c.dataStorage.NAME,
+      props: c.props
+    }))
+  })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+### Delete Data Storage
+
+This code deletes multiple data storages in the Bitrix24 system via the REST API.
+
+It sequentially sends delete requests for each data storage specified in the dataStorageMap using the entity.delete method.
+
+```ts [batch-rest-api-ver2-data-storage-delete.ts]
+import { B24Hook, LoggerFactory, SdkError, AjaxError } from '@bitrix24/b24jssdk'
+
+type DataStorageParams = {
+  ENTITY: string
+  NAME: string
+}
+
+type DataStorage = {
+  dataStorage: DataStorageParams
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:batchDataStorageDelete', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function removeDataStorageList(dataStorageMap: Map<string, DataStorage>, requestId: string): Promise<void> {
+  for (const dataStorage of dataStorageMap.values()) {
+    const response = await $b24.actions.v2.call.make({
+      method: 'entity.delete',
+      params: {
+        ENTITY: dataStorage.dataStorage.ENTITY
+      },
+      requestId: `${requestId}/init:getCurrentList`
+    })
+
+    if (!response.isSuccess) {
+      throw new SdkError({
+        code: 'MY_APP_GET_PROBLEM',
+        description: `Problem ${response.getErrorMessages().join('; ')}`,
+        status: 404
+      })
+    }
+  }
+}
+
+// Usage
+const requestId = 'batch/DataStorageRemove'
+try {
+  const dataStorageMap: Map<string, DataStorage> = new Map([
+    ['DataStorage1', {
+      dataStorage: {
+        ENTITY: 'DS1',
+        NAME: 'Data Storage 1'
+      }
+    }],
+    ['DataStorage2', {
+      dataStorage: {
+        ENTITY: 'DS2',
+        NAME: 'Data Storage 2'
+      }
+    }],
+    ['DataStorage3', {
+      dataStorage: {
+        ENTITY: 'DS3',
+        NAME: 'Data Storage 3'
+      }
+    }]
+  ])
+
+  await removeDataStorageList(dataStorageMap, requestId)
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For sequential requests**: Use [`Call`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver2.md) for single calls.
+- **For working with lists**: Use [`CallList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver2.md) for retrieving large volumes of data.
+- **For step-by-step processing**: Use [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver2.md) for processing data as it arrives.
+- **To run more commands (more than 50)**: Use [`BatchByChunk`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-by-chunk-rest-api-ver2.md), which automatically splits commands into chunks of 50.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# BatchV3.make
+
+> Method for executing batch requests to Bitrix24 REST API version 3. Allows executing up to 50 commands in a single API call.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+Use `BatchV3.make()` to execute up to 50 REST API commands in a single request. This is especially useful when you need to retrieve or update large amounts of data while minimizing network requests and adhering to REST API limits.
+
+```ts
+// Basic usage
+import { EnumCrmEntityTypeId } from '@bitrix24/b24jssdk'
+
+const response = await $b24.actions.v3.batch.make({
+  calls: [
+    ['tasks.task.get', { id: 1 }],
+    ['tasks.task.get', { id: 2 }]
+  ],
+  options: {
+    isHaltOnError: true,
+    returnAjaxResult: true,
+    requestId: 'unique-request-id'
+  }
+})
+```
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionBatchV3
+): Promise<CallBatchResult<T>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`calls`** | `BatchCommandsArrayUniversal | BatchCommandsObjectUniversal | BatchNamedCommandsUniversal` | Yes | Commands to execute in the batch. Supports several [formats](https://bitrix24.github.io/b24jssdk/#command-formats-optionscalls). |
+| **`options`** | `IB24BatchOptions` | No | [Additional options](https://bitrix24.github.io/b24jssdk/#batch-request-options-optionsoptions) for batch request execution. |
+
+### Command Formats (`options.calls`)
+
+#### 1. Array of tuples (`BatchCommandsArrayUniversal`)
+
+```ts
+calls: [
+  ['method1', params1],
+  ['method2', params2],
+  // ...
+]
+```
+
+#### 2. Array of objects (`BatchCommandsObjectUniversal`)
+
+```ts
+calls: [
+  { method: 'method1', params: params1 },
+  { method: 'method2', params: params2 },
+  // ...
+]
+```
+
+#### 3. Object with named commands (`BatchNamedCommandsUniversal`)
+
+```ts
+calls: {
+  command1: { method: 'method1', params: params1 },
+  command2: ['method2', params2],
+  // ...
+}
+```
+
+### Batch Request Options (`options.options`)
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| **`isHaltOnError`** | `boolean` | `true` | Whether to stop execution on the first error. |
+| **`returnAjaxResult`** | `boolean` | `false` | Whether to return an `AjaxResult` object instead of data. |
+| **`requestId`** | `string` | — | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<CallBatchResult<T>>` — a promise that resolves to a `CallBatchResult<T>` object.
+
+The result structure depends on the input data format:
+
+- **For array of commands**: array of results in the same order.
+- **For named commands**: object with keys corresponding to command names.
+
+## Error Handling
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const response = await $b24.actions.v3.batch.make({
+  calls: [
+    { method: 'tasks.task.get', params: { id: 1 } },
+    { method: 'tasks.task.get', params: { id: 2 } }
+  ],
+  options: {
+    isHaltOnError: true,
+    returnAjaxResult: true,
+    requestId: 'unique-request-id'
+  }
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Getting Some Tasks
+
+```ts [BatchTasks.ts]
+import type { AjaxResult } from '@bitrix24/b24jssdk'
+import { B24Hook, EnumCrmEntityTypeId, LoggerFactory, SdkError } from '@bitrix24/b24jssdk'
+
+type TaskItem = {
+  id: number
+  title: string
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:batchTasks', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function getMultipleItems(itemIds: number[], requestId: string): Promise<TaskItem[]> {
+  if (itemId.length < 1 || itemId.length > 50) {
+    throw new SdkError({
+      code: 'MY_APP_GET_PROBLEM'
+      description: `The number of elements must be between 1 and 50`,
+      status: 404
+    })
+  }
+
+  const calls = itemIds.map(id => [
+    'tasks.task.get',
+    {
+      id,
+      select: ['id', 'title']
+    }
+  ])
+  
+  const response = await $b24.actions.v3.batch.make<{ item: TaskItem }>({
+    calls,
+    options: {
+      isHaltOnError: true,
+      returnAjaxResult: true,
+      requestId
+    }
+  })
+  
+  if (!response.isSuccess) {
+    throw new Error(`Problem: ${response.getErrorMessages().join('; ')}`)
+  }
+  
+  const resultData = (response as Result<AjaxResult<{ item: TaskItem }>[]>).getData()
+  const results: TaskItem[] = []
+  resultData.forEach((resultRow, index) => {
+    if (resultRow.isSuccess) {
+      results.push(resultRow.getData()!.result.item)
+    }
+  })
+
+  return results
+}
+
+// Usage
+const requestId = 'batch/tasks.task.get'
+try {
+  const itemIds = [1, 2, 3]
+  const items = await getMultipleItems(itemIds, requestId)
+  
+  $logger.info(`Retrieved ${items.length} items`, {
+    expected: itemIds.length,
+    retrieved: items.length,
+    items: items.map(c => ({ id: c.id, title: c.title }))
+  })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For sequential requests**: Use [`Call`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver3.md) for single calls.
+- **For working with lists**: Use [`CallList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver3.md) for retrieving large volumes of data.
+- **For step-by-step processing**: Use [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver3.md) for processing data as it arrives.
+- **To run more commands (more than 50)**: Use [`BatchByChunk`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-by-chunk-rest-api-ver3.md), which automatically splits commands into chunks of 50.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# B24Frame Class
+
+> Designed for managing Bitrix24 applications. It inherits functionality from AbstractB24 and provides methods for working with authentication, messages, sliders, and more.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+Implements the `TypeB24` interface.
+
+## Constructor
+
+```ts
+constructor(queryParams: B24FrameQueryParams)
+```
+
+The [`B24FrameQueryParams`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/types/auth.ts){rel="&#x22;nofollow&#x22;"} type describes the parameters needed to initialize a Bitrix24 application frame.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `DOMAIN` | `string` | Bitrix24 account domain name. |
+| `PROTOCOL` | `boolean` | Connection protocol. |
+| `LANG` | `string` | Bitrix24 interface language. |
+| `APP_SID` | `string` | Application session identifier. |
+
+## Getters
+
+### isInit
+
+```ts
+get isInit(): boolean
+```
+
+Indicates whether the data is initialized.
+
+### isFirstRun
+
+```ts
+get isFirstRun(): boolean
+```
+
+Returns a flag indicating whether this is the first run of the application.
+
+### isInstallMode
+
+```ts
+get isInstallMode(): boolean
+```
+
+Returns a flag indicating whether the application is in installation mode.
+
+### auth
+
+```ts
+get auth(): AuthManager
+```
+
+Returns the [authorization manager](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-auth.md).
+
+### parent
+
+```ts
+get parent(): ParentManager
+```
+
+Returns the [parent window manager](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-parent.md).
+
+### slider
+
+```ts
+get slider(): SliderManager
+```
+
+Returns the [slider manager](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-slider.md).
+
+### placement
+
+```ts
+get placement(): PlacementManager
+```
+
+Returns the [placement manager](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-placement.md).
+
+### options
+
+```ts
+get options(): OptionsManager
+```
+
+Returns the [options manager](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-options.md).
+
+### dialog
+
+```ts
+get dialog(): DialogManager
+```
+
+Returns the [dialog manager](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-dialog.md).
+
+## Methods
+
+> !NOTE
+> Implements the `TypeB24` interface.
+
+### installFinish
+
+```ts
+async installFinish(): Promise<any>
+```
+
+Signals the completion of the application installation.
+
+### getAppSid
+
+```ts
+getAppSid(): string
+```
+
+Returns the application identifier relative to the parent window.
+
+### getLang
+
+```ts
+getLang(): B24LangList
+```
+
+Returns the `localization` of the Bitrix24 interface.
+
+---
+
+# B24Frame Initialization
+
+> Function is designed to initialize a B24Frame
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+```ts
+initializeB24Frame(): Promise<B24Frame>
+```
+
+The `initializeB24Frame` function is designed to initialize a [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame.md) object, which is used for working with Bitrix24 applications.
+
+It manages the initialization process and handles potential connection errors.
+
+> !NOTE
+> Supports repeated calls until initialization is complete, using a callback queue.
+
+**Return Value**
+
+- **`Promise<B24Frame>`**: Returns a promise that resolves to a [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame.md) object upon successful initialization.
+
+## Usage
+
+```ts
+import { initializeB24Frame } from '@bitrix24/b24jssdk'
+```
+
+---
+
+# Auth Manager Class
+
+> Designed for managing authentication in Bitrix24 applications. It handles authentication data received from the parent window and provides methods for updating and retrieving this data.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+if ($b24.auth.isAdmin) {
+    // ... ////
+}
+```
+
+## Getters
+
+### isAdmin
+
+```ts-type
+get isAdmin(): boolean
+```
+
+Returns `true` if the current user has admin rights, otherwise `false`.
+
+## Methods
+
+> [AuthActions interface](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/types/auth.ts)
+> Implements the `AuthActions` interface.
+
+### getAuthData
+
+```ts-type
+getAuthData(): false | AuthData
+```
+
+Returns authentication data [`AuthData`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/types/auth.ts){rel="&#x22;nofollow&#x22;"} if it has not expired. If expired, returns `false`.
+
+### refreshAuth
+
+```ts-type
+async refreshAuth(): Promise<AuthData>
+```
+
+Refreshes authentication data through the parent window and returns the updated data [`AuthData`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/types/auth.ts){rel="&#x22;nofollow&#x22;"}.
+
+### getUniq
+
+```ts-type
+getUniq(prefix: string): string
+```
+
+Returns a unique string consisting of the given prefix and `AuthData.memberId`.
+
+> Used in `B24PullClientManager`
+
+---
+
+# Dialog Manager Class
+
+> Used for displaying standard dialogs.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Methods
+
+### selectUser
+
+```ts
+async selectUser(): Promise<null|SelectedUser>
+```
+
+Displays a standard dialog for selecting a single user.
+
+Shows only company employees.
+
+Returns a `Promise` that resolves to `null` or a [`SelectedUser`](https://bitrix24.github.io/b24jssdk/#selectusers) object.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+const makeSelectUsers = async() => {
+    const selectedUser = await $b24.dialog.selectUser()
+    $logger.info(selectedUser)
+}
+```
+
+### selectUsers
+
+```ts
+async selectUsers(): Promise<SelectedUser[]>
+```
+
+Displays a standard dialog for selecting multiple users.
+
+Shows only company employees.
+
+Returns a `Promise` that resolves to an array of [`SelectedUser`](https://bitrix24.github.io/b24jssdk/#selecteduser) objects.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+const makeSelectUsers = async() => {
+    const selectedUsers = await $b24.dialog.selectUsers()
+    
+    const list = selectedUsers.map((row: SelectedUser): string => {
+        return [ `[id: ${row.id}]`, row.name ].join(' ')
+    })
+    
+    $logger.info(selectedUsers, list)
+}
+```
+
+## Data Types
+
+### SelectedUser
+
+Used to represent information about a selected user in the Bitrix24 application. It contains several fields that describe the user's ID, name, photo, position, and other characteristics.
+
+> The `sub` and `sup` fields help determine hierarchical relationships between the current user and the selected user.
+
+- **`id: NumberString`**: User identifier. Represented as a string containing a numeric value.
+- **`name: string`**: Formatted name of the user.
+- **`photo: string`**: URL of the user's photo.
+- **`position: string`**: User's position in the company.
+- **`url: string`**: URL of the user's profile.
+- **`sub: boolean`**: Flag indicating that the selected user is a subordinate of the current user. A value of `true` means the user is a subordinate.
+- **`sup: boolean`**: Flag indicating that the selected user is a supervisor of the current user. A value of `true` means the user is a supervisor.
+
+---
+
+# Options Manager Class
+
+> Used for managing application and user settings in the Bitrix24 application. It allows initializing data, getting, and setting options through messages to the parent window.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Methods
+
+### appGet
+
+```ts
+appGet(option: string): any
+```
+
+Retrieves the value of an application option.
+
+Returns the option value or throws an error if the option is not set.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+const value: any = $b24.options.appGet('test')
+```
+
+### appSet
+
+```ts
+async appSet(option: string, value: any): Promise<void>
+```
+
+Sets the value of an application option.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+await $b24.options.appSet('test', 123)
+```
+
+### userGet
+
+```ts
+userGet(option: string): any
+```
+
+Retrieves the value of a user option.
+
+Returns the option value or throws an error if the option is not set.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+const value: any = $b24.options.userGet('test')
+```
+
+### userSet
+
+```ts
+async userSet(option: string, value: any): Promise<void>
+```
+
+Sets the value of a user option.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+await $b24.options.userSet('test', 123)
+```
+
+---
+
+# Parent Manager Class
+
+> Provides methods for managing the parent application window in Bitrix24, including resizing the window, managing scroll, initiating calls, and opening the messenger.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+await $b24.parent.fitWindow()
+```
+
+## Methods
+
+### closeApplication
+
+```ts
+async closeApplication(): Promise<void>
+```
+
+Closes the application slider.
+
+### fitWindow
+
+```ts
+async fitWindow(): Promise<any>
+```
+
+Sets the application frame size according to its content size.
+
+### resizeWindow
+
+```ts
+async resizeWindow(width: number, height: number): Promise<void>
+```
+
+Resizes the application frame to the specified width and height.
+
+### resizeWindowAuto
+
+```ts
+async resizeWindowAuto(
+    appNode: null | HTMLElement = null,
+    minHeight: number = 0,
+    minWidth: number = 0
+): Promise<void>
+```
+
+Automatically resizes the `document.body` of the application frame according to its content size.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `appNode` | `null|HTMLElement` | Application node for height calculation. |
+| `minHeight` | `number` | Minimum height. |
+| `minWidth` | `number` | Minimum width. |
+
+### getScrollSize
+
+```ts
+getScrollSize(): { scrollWidth: number, scrollHeight: number }
+```
+
+Returns the internal dimensions of the application frame.
+
+### scrollParentWindow
+
+```ts
+async scrollParentWindow(scroll: number): Promise<void>
+```
+
+Scrolls the parent window to the specified position.
+
+### reloadWindow
+
+```ts
+async reloadWindow(): Promise<void>
+```
+
+Reloads the application page.
+
+### setTitle
+
+```ts
+async setTitle(title: string): Promise<void>
+```
+
+Sets the page title.
+
+### imCallTo
+
+```ts
+async imCallTo(userId: number, isVideo: boolean = true): Promise<void>
+```
+
+Initiates a call through internal communication.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `userId` | `number` | User identifier. |
+| `isVideo` | `boolean` | `true` for video call, `false` for audio call. |
+
+### imPhoneTo
+
+```ts
+async imPhoneTo(phone: string): Promise<void>
+```
+
+Makes a call to the specified phone number.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `phone` | `string` | Phone number. |
+
+### imOpenMessenger
+
+```ts
+async imOpenMessenger(dialogId: number|'chat${number}'|'sg${number}'|'imol|${number}'|undefined): Promise<void>
+```
+
+Opens the messenger window.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `dialogId` | `number|chat${number}|sg${number}|imol|${number}|undefined` | Dialog identifier. |
+
+### imOpenHistory
+
+```ts
+async imOpenHistory(dialogId: number|'chat${number}'|'imol|${number}'): Promise<void>
+```
+
+Opens the message history window.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `dialogId` | `number|chat${number}|imol|${number}` | Dialog identifier. |
+
+## Examples
+
+### Try call
+
+```ts [frame-parent-call.ts]
+import type { B24Frame } from '@bitrix24/b24jssdk'
+import { Text, LoggerFactory, Logger, ConsoleV2Handler, LogLevel } from '@bitrix24/b24jssdk'
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:B24FrameParentCall', devMode)
+const $b24 = useB24().get() as B24Frame
+
+const loggerForDebugB24 = Logger.create('b24')
+const handlerForDebugB24 = new ConsoleV2Handler(LogLevel.DEBUG, { useStyles: true })
+loggerForDebugB24.pushHandler(handlerForDebugB24)
+
+$b24.setLogger(loggerForDebugB24)
+
+const response = await $b24.parent.message.send(
+  'setTitle',
+  {
+    title: 'Text for insertion',
+    requestId: Text.getUuidRfc4122(),
+    isSafely: true,
+    safelyTime: 1500
+  }
+)
+
+$logger.debug('parent response', {
+  response
+})
+```
+
+---
+
+# Placement Manager Class
+
+> Used for managing the placement of widgets in the Bitrix24 application.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+[Learn more](https://apidocs.bitrix24.com/api-reference/widgets/ui-interaction/index.html){rel="&#x22;nofollow&#x22;"}
+
+## Getters
+
+### `placement`
+
+```ts
+get placement(): string
+```
+
+Returns the placement title. By default, returns `'DEFAULT'` if the title is not set.
+
+### isDefault
+
+```ts
+get isDefault(): boolean
+```
+
+Returns `true` if the placement title is `'DEFAULT'`.
+
+### options
+
+```ts
+get options(): any
+```
+
+Returns the placement options object. The object is frozen to prevent modifications.
+
+### isSliderMode
+
+```ts
+get isSliderMode(): boolean
+```
+
+Returns `true` if the widget is operating in slider mode (option `IFRAME` is `'Y'`).
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+if ($b24.placement.isSliderMode) {
+    $b24.parent.setTitle('SliderMode')
+}
+```
+
+## Methods
+
+### getInterface
+
+```ts
+async getInterface(): Promise<any>
+```
+
+Getting information about the JS interface of the current embedding location: a list of possible commands and events.
+
+```ts
+// ... /////
+$b24 = await initializeB24Frame()
+// ... /////
+const value: any = await $b24.placement.getInterface()
+```
+
+### bindEvent
+
+```ts
+async bindEvent(eventName: string): Promise<any>
+```
+
+Setting up the event handler for the interface
+
+### call
+
+```ts
+async call(command: string, parameters: Record<string, any> = {}): Promise<any>
+```
+
+Call the registered interface command.
+
+```ts
+import { LoggerBrowser, LoggerType } from '@bitrix24/b24jssdk'
+// ... /////
+const logger = LoggerBrowser.build('Demo', true)
+
+$b24 = await initializeB24Frame()
+// ... /////
+$b24.placement.call('reloadData')
+  .then((respose: any) => {
+    logger.log('reload call')
+  })
+```
+
+---
+
+# Slider Manager Class
+
+> Provides methods for working with sliders in the Bitrix24 application. It allows opening and closing sliders, as well as managing their content.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Methods
+
+### openSliderAppPage
+
+```ts-type
+async openSliderAppPage(params: any = {}}: Promise<any>
+```
+
+The `openSliderAppPage` method allows you to open the current app in a new slider, passing arbitrary parameters.
+
+How it works:
+
+- **Data Passing:** You call the method and pass an object with parameters (e.g., place, action, or id).
+- **Processing in the Application:** On the application side, it's most convenient to intercept these parameters through middleware. This allows you to decide which route to display to the user before the page is rendered.
+- **Seamless Navigation:** The user sees a new slider with the desired content, while the redirection logic is hidden within the application.
+
+```ts [frame-slider-app-page-open.ts]
+import type { B24Frame } from '@bitrix24/b24jssdk'
+import { LoggerFactory } from '@bitrix24/b24jssdk'
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:B24FrameSliderOpenPath', devMode)
+const $b24 = useB24().get() as B24Frame
+
+async function openAppPage() {
+  const response = await $b24.slider.openSliderAppPage(
+    {
+      // The 'place' parameter will be available in placement
+      // It should be processed in middleware to redirect to the desired route.
+      place: 'app.place',
+      bx24_width: 650,
+      bx24_title: 'Page title in the browser'
+    }
+  )
+
+  $logger.debug('response', { response })
+}
+
+await openAppPage()
+```
+
+### closeSliderAppPage
+
+```ts-type
+async closeSliderAppPage(): Promise<void>
+```
+
+Closes the slider with the application.
+
+```ts [frame-slider-app-page-close.ts]
+import type { B24Frame } from '@bitrix24/b24jssdk'
+
+const $b24 = useB24().get() as B24Frame
+
+async function closePage() {
+  return $b24.slider.closeSliderAppPage()
+}
+
+closePage()
+```
+
+### openPath
+
+```ts-type
+async openPath(url: URL, width: number = 1640): Promise<StatusClose>
+```
+
+Opens the specified path inside the portal in a slider.
+
+Handles errors related to mobile device usage and can open the URL in a new tab if the slider is not supported.
+
+Returns [`StatusClose`](https://github.com/bitrix24/b24jssdk/blob/main/packages/jssdk/src/types/slider.ts){rel="&#x22;nofollow&#x22;"}
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `url` | `URL` | URL to be opened. |
+| `width` | `number` | Slider width, a number in the range from `1640` to `900`. |
+
+This example demonstrates calling the Bitrix24 slider and handling its closing result.
+
+Key points:
+
+- **Completion handling:** After closing the slider, the SDK returns a status. This allows subsequent operations to be initiated, such as reinitializing application data.
+
+> !WARNING
+> In some cases, Bitrix24 opens the interface not in the slider, but in a new browser tab.
+>
+> - **Limitation:** It is virtually impossible to detect the closing of an individual tab using standard JS tools.
+> - **Solution:** The `isOpenAtNewWindow` parameter in the jsSdk response allows you to determine whether a tab was opened instead of the slider and correctly configure the application's logic.
+
+```ts [frame-slider-open-path.ts]
+import type { B24Frame } from '@bitrix24/b24jssdk'
+import { LoggerFactory } from '@bitrix24/b24jssdk'
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:B24FrameSliderOpenPath', devMode)
+const $b24 = useB24().get() as B24Frame
+
+async function makeOpenSliderEditCurrency(currencyCode: string) {
+  // Open the slider with the specified width
+  const url = $b24.slider.getUrl(`/crm/configs/currency/edit/${currencyCode}/`)
+  const response = await $b24.slider.openPath(
+    $b24.slider.getUrl(`/crm/configs/currency/edit/${currencyCode}/`),
+    950
+  )
+
+  $logger.debug('response', { url, response })
+
+  // Check that it was a slider (not a new tab) and it was closed
+  if (!response.isOpenAtNewWindow && response.isClose) {
+    $logger.notice(`The slider is closed. Reinitializing the application...`)
+    // Data update logic
+  }
+}
+
+await makeOpenSliderEditCurrency('USD')
+```
+
+### getUrl
+
+```ts-type
+getUrl(path: string = '/'): URL
+```
+
+Returns a `URL` relative to the domain name and path.
+
+```ts
+$b24 = await initializeB24Frame()
+// ...
+const url = $b24.slider.getUrl('/settings/configs/userfield_list.php')
+```
+
+### getTargetOrigin
+
+```ts-type
+getTargetOrigin(): string
+```
+
+Returns the Bitrix24 address (e.g., `https://your_domain.bitrix24.com`).
+
+---
+
+# BatchByChunkV2.make
+
+> Method for executing batch requests with automatic chunking for any number of commands. Automatically splits large command sets into batches of 50 and executes them sequentially. Use only arrays of tuples or arrays of objects.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+Use `BatchByChunkV2.make()` to execute a large number of REST API requests with automatic batching.
+
+The method returns a `Promise` with a `Result<T[]>` object containing the combined results of all successful commands.
+
+This is especially useful for:
+
+- Bulk creating or updating records
+- Exporting large volumes of data via batch requests
+- Performing complex operations that require many different API calls
+
+```ts
+// Basic usage
+import { B24Hook, EnumCrmEntityTypeId } from '@bitrix24/b24jssdk'
+
+// We create 150 deals (they will be divided into 3 chunks of 50 deals each)
+const commands = Array.from({ length: 150 }, (_, i) => [
+  'crm.item.add',
+  { entityTypeId: EnumCrmEntityTypeId.deal, fields: { title: `Deal ${i + 1}` } }
+])
+
+const response = await $b24.actions.v2.batchByChunk.make({
+  calls: commands,
+  options: {
+    isHaltOnError: true,
+    requestId: 'unique-request-id'
+  }
+})
+```
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionBatchByChunkV2
+): Promise<Result<T[]>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`calls`** | `BatchCommandsArrayUniversal | BatchCommandsObjectUniversal` | Yes | Commands to execute in the batch. Supports several [formats](https://bitrix24.github.io/b24jssdk/#command-formats-optionscalls). **Named commands are not supported**. |
+| **`options`** | `Omit<IB24BatchOptions, 'returnAjaxResult'>` | No | [Additional options](https://bitrix24.github.io/b24jssdk/##batch-request-options-optionsoptions) for batch request execution. |
+
+### Command Formats (`options.calls`)
+
+#### 1. Array of tuples (`BatchCommandsArrayUniversal`)
+
+```ts
+calls: [
+  ['method1', params1],
+  ['method2', params2],
+  // ...
+]
+```
+
+#### 2. Array of objects (`BatchCommandsObjectUniversal`)
+
+```ts
+calls: [
+  { method: 'method1', params: params1 },
+  { method: 'method2', params: params2 },
+  // ...
+]
+```
+
+### Batch Request Options (`options.options`)
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| **`isHaltOnError`** | `boolean` | `true` | Whether to stop execution on the first error in a chunk. |
+| **`requestId`** | `string` | — | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<CallBatchResult<T>>` — a promise that resolves to a `Result<T[]>` object.
+
+Important features:
+
+- **Only successful results**: Only successfully executed commands are included in the array.
+- **Combined array**: All results from all chunks are combined into a single array.
+- **Order preserved**: Results are preserved in the same order as the original commands.
+
+## Error Handling
+
+The method will split all commands into chunks and begin executing them one by one using [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver2.md).
+
+If an error occurs when calling `Batch`, it will be stored in `Result`, and the loop will continue executing.
+
+The `isHaltOnError` parameter affects the behavior of the callBatch method:
+
+When `isHaltOnError = false`, commands are executed even if some have completed with an error.
+When `isHaltOnError = true` (the default), package execution is aborted if an error occurs in any of the commands.
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const calls = Array.from({ length: 150 }, (_, i) => [
+  'crm.item.add',
+  { entityTypeId: EnumCrmEntityTypeId.deal, fields: { title: `Deal ${i + 1}` } }
+])
+const response = await $b24.actions.v2.batchByChunk.make({
+  calls,
+  options: {
+    isHaltOnError: true,
+    requestId: 'unique-request-id'
+  }
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Bulk CRM deal creation
+
+```ts [BatchByChunkCrmItems.ts]
+import type { AjaxResult } from '@bitrix24/b24jssdk'
+import { B24Hook, EnumCrmEntityTypeId, LoggerFactory } from '@bitrix24/b24jssdk'
+
+type Deal = {
+  id: number
+  title: string
+  stageId: string
+  opportunity: number
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:batchByChunkCrmItems', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function addMultipleItems(needAdd: number, requestId: string): Promise<number[]> {
+  const calls = Array.from({ length: needAdd }, (_, i) => [
+    'crm.item.add',
+    {
+      entityTypeId: EnumCrmEntityTypeId.deal,
+      fields: {
+        title: `Automatic deal #${i + 1}`,
+        stageId: 'NEW',
+        opportunity: Math.floor(Math.random() * 10000) + 1000
+      }
+    }
+  ])
+  
+  const response = await $b24.actions.v2.batchByChunk.make<{ item: Deal }>({
+    calls,
+    options: {
+      isHaltOnError: true,
+      requestId
+    }
+  })
+  
+  if (!response.isSuccess) {
+    throw new Error(`Problem: ${response.getErrorMessages().join('; ')}`)
+  }
+  
+  const resultData = (response as Result<AjaxResult<{ item: Deal }>[]>).getData()!
+  const results: number[] = []
+  resultData.forEach((resultRow, index) => {
+    if (resultRow.isSuccess) {
+      results.push(resultRow.item.id)
+    }
+  })
+
+  return results
+}
+
+// Usage
+const requestId = 'batch/crm.item.add'
+try {
+  const needAdd = 120
+  const items = await addMultipleItems(needAdd, requestId)
+  
+  $logger.info(`Retrieved ${items.length} items`, {
+    expected: needAdd,
+    retrieved: items.length,
+    items
+  })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For sequential requests**: Use [`Call`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver2.md) for single calls.
+- **For working with lists**: Use [`CallList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver2.md) for retrieving large volumes of data.
+- **For step-by-step processing**: Use [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver2.md) for processing data as it arrives.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver2.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# BatchByChunkV3.make
+
+> Method for executing batch requests to Bitrix24 REST API version 3 with automatic chunking for any number of commands. Automatically splits large command sets into batches of 50 and executes them sequentially. Use only arrays of tuples or arrays of objects.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+Use `BatchByChunkV3.make()` to execute a large number of REST API requests with automatic batching.
+
+The method returns a `Promise` with a `Result<T[]>` object containing the combined results of all successful commands.
+
+This is especially useful for:
+
+- Bulk creating or updating records
+- Exporting large volumes of data via batch requests
+- Performing complex operations that require many different API calls
+
+```ts
+// Basic usage
+import { B24Hook, EnumCrmEntityTypeId } from '@bitrix24/b24jssdk'
+
+// We create 150 tasks (they will be divided into 3 chunks of 50 tasks each)
+const commands = Array.from({ length: 150 }, (_, i) => [
+  'tasks.task.get',
+  { id: i + 1, select: ['id', 'title'] }
+])
+
+const response = await $b24.actions.v3.batchByChunk.make({
+  calls: commands,
+  options: {
+    isHaltOnError: true,
+    requestId: 'unique-request-id'
+  }
+})
+```
+
+## Method Signature
+
+```ts-type
+make<T = unknown>(
+  options: ActionBatchByChunkV3
+): Promise<Result<T[]>>
+```
+
+### Parameters
+
+The `options` object contains the following properties:
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`calls`** | `BatchCommandsArrayUniversal | BatchCommandsObjectUniversal` | Yes | Commands to execute in the batch. Supports several [formats](https://bitrix24.github.io/b24jssdk/#command-formats-optionscalls). **Named commands are not supported**. |
+| **`options`** | `Omit<IB24BatchOptions, 'returnAjaxResult'>` | No | [Additional options](https://bitrix24.github.io/b24jssdk/##batch-request-options-optionsoptions) for batch request execution. |
+
+### Command Formats (`options.calls`)
+
+#### 1. Array of tuples (`BatchCommandsArrayUniversal`)
+
+```ts
+calls: [
+  ['method1', params1],
+  ['method2', params2],
+  // ...
+]
+```
+
+#### 2. Array of objects (`BatchCommandsObjectUniversal`)
+
+```ts
+calls: [
+  { method: 'method1', params: params1 },
+  { method: 'method2', params: params2 },
+  // ...
+]
+```
+
+### Batch Request Options (`options.options`)
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| **`isHaltOnError`** | `boolean` | `true` | Whether to stop execution on the first error in a chunk. |
+| **`requestId`** | `string` | — | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<CallBatchResult<T>>` — a promise that resolves to a `Result<T[]>` object.
+
+Important features:
+
+- **Only successful results**: Only successfully executed commands are included in the array.
+- **Combined array**: All results from all chunks are combined into a single array.
+- **Order preserved**: Results are preserved in the same order as the original commands.
+
+## Error Handling
+
+The method will split all commands into chunks and begin executing them one by one using [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver3.md).
+
+If an error occurs when calling `Batch`, it will be stored in `Result`, and the loop will continue executing.
+
+The `isHaltOnError` parameter affects the behavior of the callBatch method:
+
+When `isHaltOnError = false`, commands are executed even if some have completed with an error.
+When `isHaltOnError = true` (the default), package execution is aborted if an error occurs in any of the commands.
+
+Always check the result using `isSuccess` and handle errors:
+
+```ts
+const calls = Array.from({ length: 150 }, (_, i) => [
+  'tasks.task.get',
+  { id: i + 1 }
+])
+const response = await $b24.actions.v3.batchByChunk.make({
+  calls,
+  options: {
+    isHaltOnError: true,
+    requestId: 'unique-request-id'
+  }
+})
+
+if (!response.isSuccess) {
+  // Handling error
+  console.error(new Error(`Error: ${response.getErrorMessages().join('; ')}`))
+  return
+}
+
+// Working with a successful result
+const data = response.getData()
+```
+
+## Examples
+
+### Bulk Task Creation
+
+```ts [BatchByChunkTask.ts]
+import type { AjaxResult } from '@bitrix24/b24jssdk'
+import { B24Hook, LoggerFactory } from '@bitrix24/b24jssdk'
+
+type TaskItem = {
+  id: number
+  title: string
+}
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:batchByChunkTask', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function addMultipleItems(needAdd: number, requestId: string): Promise<number[]> {
+  const calls = Array.from({ length: needAdd }, (_, i) => [
+    'tasks.task.add',
+    {
+      fields: {
+        title: `Automatic task #${i + 1}`,
+        creatorId: 1,
+        responsibleId: 1
+      }
+    }
+  ])
+  
+  const response = await $b24.actions.v3.batchByChunk.make<{ item: TaskItem }>({
+    calls,
+    options: {
+      isHaltOnError: true,
+      requestId
+    }
+  })
+  
+  if (!response.isSuccess) {
+    throw new Error(`Problem: ${response.getErrorMessages().join('; ')}`)
+  }
+  
+  const resultData = (response as Result<AjaxResult<{ item: TaskItem }>[]>).getData()!
+  const results: number[] = []
+  resultData.forEach((resultRow, index) => {
+    if (resultRow.isSuccess) {
+      results.push(resultRow.item.id)
+    }
+  })
+
+  return results
+}
+
+// Usage
+const requestId = 'batch/tasks.task.add'
+try {
+  const needAdd = 120
+  const items = await addMultipleItems(needAdd, requestId)
+  
+  $logger.info(`Retrieved ${items.length} items`, {
+    expected: needAdd,
+    retrieved: items.length,
+    items
+  })
+} catch (error) {
+  if (error instanceof AjaxError) {
+    $logger.critical(error.message, { requestId, code: error.code })
+  } else {
+    $logger.alert('Problem', { requestId, error })
+  }
+}
+```
+
+## Alternatives and Recommendations
+
+- **For sequential requests**: Use [`Call`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver3.md) for single calls.
+- **For working with lists**: Use [`CallList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver3.md) for retrieving large volumes of data.
+- **For step-by-step processing**: Use [`FetchList`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver3.md) for processing data as it arrives.
+- **For batch operations:** Use [`Batch`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver3.md) to execute up to 50 commands in a single request.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# Logger
+
+> Logger inspired by PHP Monolog, provides a structured logging system with support for channels, handlers, processors, and formatters. Implementation follows PSR-3 principles and the chain of responsibility pattern.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Logging Levels
+
+Logging levels are arranged in increasing order of severity — from **detailed debugging** (0) to **critical failures** (7).
+Filtering works on an inclusive principle: when a certain level is set, messages of that level and all higher levels are logged.
+
+| Level | Value | When to Use | Practical Example |
+| --- | --- | --- | --- |
+| **DEBUG** | 0 | Detailed debugging information for developers :br**Default in development** | `Loaded 1523 records in 45ms` |
+| **INFO** | 1 | Information about normal application operation :br Tracking business logic | `User #123 added item to cart` |
+| **NOTICE** | 2 | Important but non-critical events :br Successful operations with consequences | `System settings changed by administrator` |
+| **WARNING** | 3 | Potential issues :br Application works but requires attention | `Cache almost full (95%)` |
+| **ERROR** | 4 | Runtime errors requiring intervention :br Part of functionality unavailable | `Failed to connect to database` |
+| **CRITICAL** | 5 | Critical component failures :br Require urgent intervention during working hours | `Payment gateway unavailable for more than 5 minutes` |
+| **ALERT** | 6 | Serious problems requiring immediate resolution | `Disk space exhausted at 99%` |
+| **EMERGENCY** | 7 | System inoperable :br Highest level of urgency | `Server farm completely unavailable` |
+
+### How Level Filtering Works
+
+```ts
+// Example 1: ERROR level
+const $logger = new Logger('app');
+$logger.pushHandler(new ConsoleHandler(LogLevel.ERROR));
+
+// These logs WILL be output:
+$logger.error('Loading error'); // ✓ level 4 >= 4
+$logger.critical('Critical error'); // ✓ level 5 >= 4
+$logger.alert('Alert'); // ✓ level 6 >= 4
+$logger.emergency('Emergency'); // ✓ level 7 >= 4
+
+// These logs WILL NOT be output:
+$logger.debug('Debug'); // ✗ level 0 < 4
+$logger.info('Info'); // ✗ level 1 < 4
+$logger.warning('Warning'); // ✗ level 3 < 4
+```
+
+## Main Types and Interfaces
+
+**LogRecord**
+Log record structure:
+
+```ts-type
+{
+  channel: string,              // Logger channel name
+  level: LogLevel,              // Numeric level
+  levelName: LogLevelName,      // Level name (e.g., 'DEBUG')
+  message: string,              // Message text
+  context: Record<string, any>, // Contextual data
+  extra: Record<string, any>,   // Additional data (added by processors)
+  timestamp: Date               // Timestamp
+}
+```
+
+**LoggerInterface**
+Main logger interface:
+
+```ts-type
+log(level: LogLevel, message: string, context?: Record<string, any>): Promise<void>
+debug(message: string, context?: Record<string, any>): Promise<void>
+info(message: string, context?: Record<string, any>): Promise<void>
+notice(message: string, context?: Record<string, any>): Promise<void>
+warning(message: string, context?: Record<string, any>): Promise<void>
+error(message: string, context?: Record<string, any>): Promise<void>
+critical(message: string, context?: Record<string, any>): Promise<void>
+alert(message: string, context?: Record<string, any>): Promise<void>
+emergency(message: string, context?: Record<string, any>): Promise<void>
+```
+
+**Handler**
+Log handler:
+
+```ts-type
+handle(record: LogRecord): Promise<boolean>  // Process record
+isHandling(level: LogLevel): boolean         // Check level support
+shouldBubble(): boolean                      // Whether to continue chain
+setFormatter(formatter: Formatter): void     // Set formatter
+getFormatter(): Formatter | null             // Get formatter
+```
+
+**Formatter** for converting LogRecord:
+
+```ts-type
+format(record: LogRecord): any
+```
+
+**Processor** for modifying LogRecord:
+
+```ts-type
+(record: LogRecord) => LogRecord
+```
+
+## Main Classes
+
+**AbstractLogger**
+Abstract base class implementing convenience methods (debug, info, etc.).
+
+**Logger**
+Main logger implementation:
+
+```ts-type
+constructor(channel: string)                 // Create logger with specified channel
+pushHandler(handler: Handler): this          // Add handler
+popHandler(): Handler | null                 // Remove last handler
+setHandlers(handlers: Handler[]): this       // Set list of handlers
+pushProcessor(processor: Processor): this    // Add processor
+log(level, message, context): Promise<void>  // Main logging method
+```
+
+**NullLogger**
+Stub for cases when logging is not required. Performs no operations.
+
+## Logger Factory
+
+**LoggerFactory**
+Static methods for creating loggers:
+
+```ts-type
+createNullLogger(): LoggerInterface
+createForBrowser(channel: string, isDevMode: boolean = false): LoggerInterface
+createForBrowserDevelopment(channel: string, level: LogLevel = LogLevel.DEBUG): LoggerInterface
+createForBrowserProduction(channel: string, level: LogLevel = LogLevel.ERROR): LoggerInterface
+forcedLog(logger, action, message, context): Promise<void>  // Forced logging
+```
+
+## Processors
+
+Processors modify log records before processing:
+
+**Built-in processors:**
+
+- `memoryUsageProcessor` - adds memory usage
+- `pidProcessor` - adds process ID
+
+**Creating a custom processor:**
+
+```ts
+const customProcessor: Processor = (record) => {
+  record.extra.customField = 'value'
+  return record
+}
+```
+
+## Formatters
+
+**AbstractFormatter**
+Base formatter class with date formatting support.
+
+**LineFormatter**
+Formats logs into a string with template support:
+
+```ts
+// Default: '[{channel}] {levelName}: {message} {context} {extra} {date}'
+new LineFormatter(formatString, dateFormat)
+```
+
+*Available placeholders:*
+
+- `{channel}` - channel name
+- `{levelName}` - level name
+- `{message}` - message
+- `{context}` - context in JSON
+- `{extra}` - extra data in JSON
+- `{timestamp}` - unix timestamp
+- `{date}` - date in specified format
+
+**JsonFormatter:** Formats logs into a JSON string.
+
+**TelegramFormatter:** Formats a log entry for [sending to Telegram](https://core.telegram.org/bots/api#html-style){rel="&#x22;nofollow&#x22;"}. Supports HTML markup with escaped special characters.
+
+## Handlers
+
+**AbstractHandler**
+Base handler class with logging level and bubbling support.
+
+**ConsoleHandler**
+Outputs logs to browser console with styling support for different levels.
+
+**ConsoleV2Handler**
+Improved version of ConsoleHandler with more readable output.
+
+**MemoryHandler**
+Stores logs in memory (useful for testing and debugging):
+
+```ts
+const handler = new MemoryHandler(LogLevel.DEBUG, { limit: 1000 })
+const records = handler.getRecords() // Get all records
+handler.clear() // Clear records
+```
+
+**ConsolaAdapter**
+Adapter for [Consola](https://github.com/unjs/consola){rel="&#x22;nofollow&#x22;"}.
+
+**WinstonAdapter**
+Adapter for [Winston](https://github.com/winstonjs/winston){rel="&#x22;nofollow&#x22;"}.
+
+**StreamHandler**
+Node.js stream handler for writing logs to streams.
+
+**TelegramHandler**[Sends logs](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/logger-telegram.md) to Telegram chat. The browser displays a warning in the console. In server-side, sends a message via the Telegram Bot API.
+
+## Usage
+
+### Basic Example
+
+```ts
+import { LoggerFactory } from '@bitrix24/b24jssdk'
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta.dev || import.meta.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:getCrmItem', devMode)
+$logger.info('User logged in', { userId: 123 })
+```
+
+### Advanced Configuration
+
+```ts
+import { Logger, ConsoleV2Handler, LineFormatter } from '@bitrix24/b24jssdk'
+
+const $logger = new Logger('app')
+const handler = new ConsoleV2Handler(LogLevel.DEBUG)
+handler.setFormatter(new LineFormatter('[{levelName}] {message}'))
+
+$logger
+  .pushHandler(handler)
+  .pushProcessor(memoryUsageProcessor)
+  .pushProcessor(pidProcessor)
+
+$logger.warning('Low memory', { freeMemory: '10MB' })
+```
+
+### Creating a Custom Handler
+
+```ts
+class CustomHandler extends AbstractHandler {
+  async handle(record: LogRecord): Promise<boolean> {
+    // Send to server, write to file, etc.
+    return true // Returns true if record was processed
+  }
+}
+```
+
+## Features
+
+1. **Asynchronous**: All logging methods return a Promise.
+2. **Chain of responsibility**: Handlers are called sequentially.
+3. **Bubbling**: If a handler returns `true` and `shouldBubble() === false`, the chain is interrupted.
+4. **Channels**: Logs are grouped by channels for filtering.
+5. **Context**: Support for structured data via the `context` parameter.
+
+## Usage Recommendations
+
+**Development**
+
+- Use `LoggerFactory.createForBrowserDevelopment` with level `DEBUG`
+- Add processors for debugging information
+
+**Production**
+
+- Use `LoggerFactory.createForBrowserProduction` with level `ERROR` or higher
+- Limit the number of handlers for performance
+- Consider creating custom handlers for sending logs to server
+
+**Context**
+
+```ts
+// Good:
+$logger.error('Failed to process order', {
+  orderId: 123,
+  userId: 456,
+  error: error.message
+})
+
+// Bad:
+$logger.error(`Failed to process order ${orderId} for user ${userId}: ${error.message}`)
+```
+
+---
+
+# Telegram Handler
+
+> Sending logs to Telegram
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Quick Start
+
+### Installing and setting up a Telegram bot
+
+```bash
+# Create a bot via @BotFather
+# Get the token and chat_id
+```
+
+### Usage on the server side
+
+```ts
+import { LogLevel, Logger, TelegramHandler } from '@bitrix24/b24jssdk'
+
+// Create a logger with Telegram handler
+const $logger = new Logger('my-app')
+
+const telegramHandler = new TelegramHandler(LogLevel.ERROR, {
+  botToken: 'YOUR_BOT_TOKEN',
+  chatId: 'YOUR_CHAT_ID',
+  parseMode: 'HTML', // or 'MarkdownV2'
+  disableNotification: false, // Send notifications
+  disableWebPagePreview: true // Disable link previews
+});
+
+$logger.pushHandler(telegramHandler)
+
+// Now critical errors will be sent to Telegram
+$logger.error('Payment service unavailable', {
+  service: 'stripe',
+  error: 'Connection timeout',
+  duration: '30s'
+})
+```
+
+### Usage on the client side
+
+> !CAUTION
+> On the client side, it is not supported due to security requirements.
+
+---
+
+# Restrictions System
+
+> The restrictions system provides a comprehensive mechanism for managing request frequency, operation execution time, and adaptive delays.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+The system consists of several components working together to prevent exceeding API limits and ensure stable operation.
+
+```ts-type
+┌─────────────────────────────────────────────┐
+│            RestrictionManager               │
+│  (Coordinator of all types of restrictions) │
+└─────┬──────────────┬──────────────┬─────────┘
+      │              │              │
+      ▼              ▼              ▼
+┌──────────┐  ┌────────────┐  ┌─────────────┐
+│ Rate     │  │ Operating  │  │ Adaptive    │
+│ Limiter  │  │ Limiter    │  │ Delayer     │
+└──────────┘  └────────────┘  └─────────────┘
+```
+
+### Interfaces and Types
+
+#### ILimiter (Base Interface)
+
+```ts
+interface ILimiter {
+  getTitle(): string
+  setConfig(config: any): Promise<void>
+  setLogger(logger: LoggerInterface): void
+  getLogger(): LoggerInterface
+  canProceed(requestId: string, method: string, params?: any): Promise<boolean>
+  waitIfNeeded(requestId: string, method: string, params?: any): Promise<number>
+  updateStats(requestId: string, method: string, data: any): Promise<void>
+  reset(): Promise<void>
+  getStats(): Record<string, any>
+}
+```
+
+#### RestrictionParams
+
+```ts
+interface RestrictionParams {
+  rateLimit?: RateLimitConfig      // Rate limiting settings
+  operatingLimit?: OperatingLimitConfig  // Operation time limit settings
+  adaptiveConfig?: AdaptiveConfig  // Adaptive delay settings
+  maxRetries?: number              // Maximum number of request retries (default: 3). Except for `batch` requests
+  retryDelay?: number              // Base delay between retries in ms (default: 1000)
+}
+```
+
+## System Components
+
+### 1. RateLimiter (Rate Limiting)
+
+**Purpose**: Implements the "Leaky Bucket" algorithm for limiting request frequency.
+
+#### Configuration
+
+```ts
+interface RateLimitConfig {
+  burstLimit: number    // Bucket capacity (maximum number of simultaneous requests)
+  drainRate: number     // Leak rate (requests per second)
+  adaptiveEnabled: boolean  // Enable adaptive management
+}
+```
+
+#### Operation Principle
+
+1. **Token-based system**: Each request consumes one token
+2. **Automatic replenishment**: Tokens are replenished at the rate of `drainRate`
+3. **Adaptive management**:
+
+- With frequent errors, limits are automatically reduced by 20%
+- With stable operation, limits are gradually restored
+- Minimum values: `drainRate = 0.5`, `burstLimit = 5`
+
+### 2. OperatingLimiter (Operation Time Limiting)
+
+**Purpose**: Controls total operation execution time within a sliding window.
+
+#### Configuration
+
+```ts
+interface OperatingLimitConfig {
+  windowMs: number      // Time period in milliseconds (default: 600000 = 10 minutes)
+  limitMs: number       // Maximum execution time in milliseconds (default: 480000 = 480 seconds)
+  heavyPercent: number  // Threshold for heavy request notifications (%)
+}
+```
+
+#### Operation Principle
+
+1. **Sliding window**: Tracks execution time over the last 10 minutes
+2. **Method-specific tracking**: Statistics are kept separately for each method
+3. **Safety buffer**: Calculations use `limitMs - 5000` (5 second buffer)
+4. **Blocking**: When the limit is reached, blocks execution until statistics are reset
+
+#### Features
+
+- For batch requests, analyzes all nested methods
+- Automatic cleanup of outdated data (> windowMs + 10 seconds)
+- Logging of heavy requests when exceeding `heavyPercent`
+
+### 3. AdaptiveDelayer (Adaptive Delays)
+
+**Purpose**: Dynamically calculates delays based on previous request execution experience.
+
+#### Configuration
+
+```ts
+interface AdaptiveConfig {
+  enabled: boolean        // Enable adaptive delays
+  thresholdPercent: number // Activation threshold (% of operating limit)
+  coefficient: number     // Delay multiplier (0.01 = 1% of remaining blocking time)
+  maxDelay: number        // Maximum delay in milliseconds
+}
+```
+
+#### Delay Calculation Algorithm
+
+```html
+If operating of current method > (limitMs × thresholdPercent / 100):
+  If operating_reset_at > current time:
+    Delay = (operating_reset_at - current time) × coefficient
+  Otherwise:
+    Delay = 7000 ms (default value)
+  
+  Final delay = min(calculated, maxDelay)
+```
+
+#### Features
+
+- For batch requests, selects the maximum delay among all methods
+- Does not block execution, only adds delay
+- Uses statistics from OperatingLimiter
+
+### 4. RestrictionManager (Main Coordinator)
+
+**Purpose**: Manages all types of restrictions and error handling.
+
+#### Order of Applying Restrictions
+
+1. **Operating Limit Check**: Checks operation time limit
+2. **Adaptive Delay**: Applies adaptive delay if necessary
+3. **Rate Limit**: Checks and applies rate limiting (loop for parallel requests)
+
+#### Error Handling
+
+```ts
+// Determining error type
+#isRateLimitError(error): boolean     // 503 or QUERY_LIMIT_EXCEEDED
+#isOperatingLimitError(error): boolean // 429 or OPERATION_TIME_LIMIT
+#isNeedThrowError(error): boolean     // Critical errors (no point in retrying)
+```
+
+#### Retry Strategy
+
+1. **For limit errors**: Exponential delay considering the attempt number
+2. **For other errors**: Basic backoff with jitter (±10%)
+3. **Critical errors**: No retries
+
+## Default Configurations
+
+### Default parameters for regular tariffs (standard)
+
+```ts
+{
+  rateLimit: {
+    burstLimit: 50,      // 50 simultaneous requests
+    drainRate: 2,        // 2 requests per second
+    adaptiveEnabled: true
+  },
+  operatingLimit: {
+    windowMs: 600000,    // 10 minutes
+    limitMs: 480000,     // 480 seconds (8 minutes)
+    heavyPercent: 80     // Notification at 80% usage
+  },
+  adaptiveConfig: {
+    enabled: true,
+    thresholdPercent: 80, // Activation at 80% of limit
+    coefficient: 0.01,    // 1% of remaining blocking time
+    maxDelay: 7000        // Maximum 7 seconds delay
+  },
+  maxRetries: 3,
+  retryDelay: 1000
+}
+```
+
+### Parameters for the Enterprise plan
+
+```ts
+{
+  ...standard,
+  rateLimit: {
+    burstLimit: 250,     // 250 simultaneous requests
+    drainRate: 5,        // 5 requests per second
+    adaptiveEnabled: true
+  }
+}
+```
+
+### Parameters for bulk data processing
+
+```ts
+{
+  ...standard,
+  rateLimit: {
+    burstLimit: 30,
+    drainRate: 1,
+    adaptiveEnabled: true
+  },
+  operatingLimit: {
+    windowMs: 600_000,
+    limitMs: 480_000,
+    heavyPercent: 50 // Higher threshold for notifications
+  },
+  adaptiveConfig: {
+    enabled: true,
+    thresholdPercent: 50, // More threshold
+    coefficient: 0.015, // More pause
+    maxDelay: 10_000 // Max 10 seconds
+  },
+  maxRetries: 5 // More attempts
+}
+```
+
+### Real-time parameters
+
+```ts
+{
+  ...standard,
+  adaptiveConfig: {
+    enabled: false, // Off
+    thresholdPercent: 100,
+    coefficient: 0.001,
+    maxDelay: 480_000
+  },
+  maxRetries: 1
+}
+```
+
+## Monitoring and Statistics
+
+### Getting Statistics
+
+```ts
+import { ApiVersion } from '@bitrix24/b24jssdk'
+
+// const $b24 = ...
+
+const statsV2 = $b24.getHttpClient(ApiVersion.v2).getStats()
+const statsV3 = $b24.getHttpClient(ApiVersion.v3).getStats()
+
+// Statistics structure:
+{
+  // General statistics
+  retries: number,                 // Number of retry attempts
+  consecutiveErrors: number,       // Consecutive errors
+  limitHits: number,               // Limit hits
+  
+  // Rate Limiter
+  tokens: number,                  // Current number of tokens
+  burstLimit: number,              // Current burst limit
+  drainRate: number,               // Current drain rate
+  
+  // Adaptive Delayer
+  adaptiveDelays: number,          // Number of applied delays
+  totalAdaptiveDelay: number,      // Total delay time
+  adaptiveDelayAvg: number,        // Average delay
+  
+  // Operating Limiter
+  heavyRequestCount: number,       // Number of heavy requests
+  operatingStats: {                // Method statistics (in seconds)
+    [method: string]: number
+  },
+  
+  // Errors by method
+  errorCounts: {
+    [method: string]: number
+  }
+}
+```
+
+### Resetting Statistics
+
+```ts
+// Complete reset of all limiter statistics
+import { ApiVersion } from '@bitrix24/b24jssdk'
+
+// const $b24 = ...
+
+await $b24.getHttpClient(ApiVersion.v2).reset()
+await $b24.getHttpClient(ApiVersion.v3).reset()
+```
+
+## Usage Recommendations
+
+Configuration for different scenarios:
+
+```ts
+import { ParamsFactory } from '@bitrix24/b24jssdk'
+
+// const $b24 = ...
+
+// Default parameters
+$b24.setRestrictionManagerParams( ParamsFactory.getDefault() )
+
+// Batch processing
+$b24.setRestrictionManagerParams( ParamsFactory.getBatchProcessing() )
+
+// Real-time
+$b24.setRestrictionManagerParams( ParamsFactory.getRealtime() )
+
+// By tariff plan
+$b24.setRestrictionManagerParams( ParamsFactory.fromTariffPlan('enterprise') )
+
+// Dynamic configuration change
+$b24.setRestrictionManagerParams({
+  ...ParamsFactory.getDefault(),
+  rateLimit: {
+    burstLimit: 30,  // Temporary reduction in case of problems
+    drainRate: 1,
+    adaptiveEnabled: true
+  }
+})
+```
+
+---
+
+# HealthCheck.make()
+
+> Method for checking the availability of Bitrix24 REST API. Performs a simple request to the REST API to verify service health.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+Use `HealthCheck.make()` to check the availability of Bitrix24 REST API. The method returns a `Promise` with a boolean value indicating API availability.
+
+```ts
+// Basic usage
+const isHealthy = await $b24.tools.healthCheck.make()
+
+if (isHealthy) {
+  console.log('Bitrix24 API is available')
+} else {
+  console.error('Problems accessing Bitrix24 API')
+}
+```
+
+## Method Signature
+
+```ts-type
+make(
+  options?: { requestId?: string }
+): Promise<boolean>
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<boolean>` — a promise that resolves to a boolean value:
+
+- **`true`** — REST API is available and responding, webhook is configured correctly.
+- **`false`** — REST API is unavailable, an error occurred, or necessary access rights are missing.
+
+## Examples
+
+### Availability check
+
+```ts [tools-health-check.ts]
+import { B24Hook, LoggerFactory } from '@bitrix24/b24jssdk'
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:healthCheck', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function checkRestApiHealth(): Promise<boolean> {
+  try {
+    return await $b24.tools.healthCheck.make({
+      requestId: `unique-request-id`
+    })
+  } catch (error) {
+    $logger.error('Health check failed unexpectedly', { error })
+    return false
+  }
+}
+
+// Usage
+try {
+  const apiAvailable = await checkRestApiHealth()
+
+  if (apiAvailable) {
+    $logger.info('Bitrix24 API is available and responding')
+  } else {
+    $logger.error('Bitrix24 API is unavailable. Check:\n1. Correctness of webhook URL\n2. Bitrix24 availability from your network')
+  }
+} catch (error) {
+  $logger.error('Failed to perform health check', { error })
+}
+```
+
+## Alternatives and Recommendations
+
+- **For measuring response speed**: Use [`Ping`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/tools-ping.md).
+- **For checking specific permissions**: Perform a test request to the required API method.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# Ping.make()
+
+> Method for measuring Bitrix24 REST API response speed. Performs a test request and returns response time in milliseconds.
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+## Overview
+
+Use `Ping.make()` to measure the response time of Bitrix24 REST API. The method returns a `Promise` with a numeric value of the response time in milliseconds.
+
+```ts
+// Basic usage
+const responseTime = await $b24.tools.ping.make()
+
+if (responseTime >= 0) {
+  console.log(`API response time: ${responseTime}ms`)
+} else {
+  console.error('Failed to measure API response time')
+}
+```
+
+## Method Signature
+
+```ts-type
+make(
+  options?: { requestId?: string }
+): Promise<number>
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| **`requestId`** | `string` | No | Unique request identifier for tracking. Used for request deduplication and debugging. |
+
+### Return Value
+
+`Promise<number>` — a promise that resolves to a numeric value:
+
+- **Positive number** — response time in milliseconds from sending the request to receiving the response.
+- **`-1`** — in case of error or timeout.
+
+## Examples
+
+### Measuring response time
+
+```ts [tools-ping.ts]
+import { B24Hook, LoggerFactory } from '@bitrix24/b24jssdk'
+
+const devMode = typeof import.meta !== 'undefined' && (import.meta?.dev || globalThis._importMeta_.env?.DEV)
+const $logger = LoggerFactory.createForBrowser('Example:ping', devMode)
+const $b24 = B24Hook.fromWebhookUrl('https://your_domain.bitrix24.com/rest/1/webhook_code/')
+
+async function measureApiResponseTime(): Promise<number> {
+  try {
+    return await $b24.tools.ping.make({
+      requestId: `unique-request-id`
+    })
+  } catch (error) {
+    $logger.error('Ping failed unexpectedly', { error })
+    return -1
+  }
+}
+
+// Usage
+try {
+  const responseTime = await measureApiResponseTime()
+
+  if (responseTime >= 0) {
+    // Response time classification
+    let status = 'optimal'
+    if (responseTime > 1000) status = 'slow'
+    if (responseTime > 3000) status = 'very_slow'
+    if (responseTime > 10000) status = 'critical'
+
+    $logger.info(`API response time: ${responseTime}ms (${status})`, {
+      responseTime,
+      status,
+      threshold: 'Optimal < 1000ms'
+    })
+  } else {
+    $logger.error('Failed to measure API response time')
+  }
+} catch (error) {
+  $logger.error('Error measuring response time', { error })
+}
+```
+
+## Alternatives and Recommendations
+
+- **For availability check**: Use [`HealthCheck`](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/tools-health-check.md).
+- **For measuring operation performance**: Perform time measurements for specific API methods.
+- **On the client-side (browser):** Use the built-in [`B24Frame`](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md#init) object.
+
+---
+
+# Examples
+
+> In this section we will post examples of using Bitrix24 JS SDK
+
+> !WARNING
+> We are still updating this page. Some data may be missing here — we will complete it shortly.
+
+---

@@ -234,7 +234,7 @@ print("\n✓ Все системы работают!")
 1. **Изучите библиотеку промптов**: `docs/prompts_library.md`
 2. **Настройте интеграцию с 1С**: `docs/integration_1c.md`
 3. **Продвинутые техники AI**: `docs/ai_prompts_advanced.md`
-4. **Настройка Bitrix24 JS SDK**: `docs/bitrix24_js_sdk_integration.md`
+4. **Работа с b24pysdk**: `docs/b24pysdk_migration_guide.md`
 
 ## Частые вопросы
 

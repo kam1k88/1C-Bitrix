@@ -1,0 +1,53 @@
+# Bitrix24 JS SDK
+
+> A comprehensive JavaScript library integrated with Bitrix24, providing a powerful and convenient toolkit for interacting with the Bitrix24 REST API, enabling secure and efficient management of data and processes in web application development.
+
+## Getting Started
+
+- [Get Started](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started.md): Quick start guide for working with the SDK for Bitrix24 REST API
+- [Vue Project](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/vue.md): Guide for installing Bitrix24 JS SDK in Vue applications.
+- [Nuxt Project](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/nuxt.md): Guide for installing Bitrix24 JS SDK in Nuxt applications.
+- [React Project](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/react.md): Guide for installing Bitrix24 JS SDK in React applications.
+- [Node.js Project](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/nodejs.md): Guide for installing Bitrix24 JS SDK in Node.js applications.
+- [UMD](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/installation/umd.md): Guide for using UMD version Bitrix24 JS SDK in you applications.
+- [Migration to v1](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/migration/v1.md): A comprehensive guide to migrate your application from Bitrix24 JS SDK v0 to Bitrix24 JS SDK v1.
+- [LLMs.txt](https://bitrix24.github.io/b24jssdk/raw/docs/getting-started/ai/llms-txt.md): How to get AI tools like Cursor, Windsurf, GitHub Copilot, ChatGPT, and Claude to understand Bitrix24 JS SDK methods, tools, and best practices.
+
+## Working
+
+- [Introduction to working with Bitrix24 REST API](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api.md): Overview of SDK capabilities for working with Bitrix24 REST API
+- [CallV2.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver2.md): A method for making Bitrix24 REST API version 2 calls.
+- [CallV3.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-rest-api-ver3.md): Method for making Bitrix24 REST API version 3 calls.
+- [CallListV2.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver2.md): Method for quickly retrieving all data from list methods of Bitrix24 REST API version 2.
+- [CallListV3.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/call-list-rest-api-ver3.md): Method for quickly retrieving all data from list methods of Bitrix24 REST API version 3.
+- [FetchListV2.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver2.md): Returns an AsyncGenerator that allows processing data from list methods of Bitrix24 REST API version 2 as it is received without loading the entire array into memory at once. This is especially useful when working with very large volumes of data.
+- [FetchListV3.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/fetch-list-rest-api-ver3.md): Returns an AsyncGenerator that allows processing data from list methods of Bitrix24 REST API version 3 as it is received without loading the entire array into memory at once. This is especially useful when working with very large volumes of data.
+- [BatchV2.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver2.md): Method for executing batch requests to Bitrix24 REST API version 2. Allows executing up to 50 commands in a single API call.
+- [BatchV3.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-rest-api-ver3.md): Method for executing batch requests to Bitrix24 REST API version 3. Allows executing up to 50 commands in a single API call.
+- [B24Frame Class](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame.md): Designed for managing Bitrix24 applications. It inherits functionality from AbstractB24 and provides methods for working with authentication, messages, sliders, and more.
+- [B24Frame Initialization](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-initialize-b24-frame.md): Function is designed to initialize a B24Frame
+- [Auth Manager Class](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-auth.md): Designed for managing authentication in Bitrix24 applications. It handles authentication data received from the parent window and provides methods for updating and retrieving this data.
+- [Dialog Manager Class](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-dialog.md): Used for displaying standard dialogs.
+- [Options Manager Class](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-options.md): Used for managing application and user settings in the Bitrix24 application. It allows initializing data, getting, and setting options through messages to the parent window.
+- [Parent Manager Class](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-parent.md): Provides methods for managing the parent application window in Bitrix24, including resizing the window, managing scroll, initiating calls, and opening the messenger.
+- [Placement Manager Class](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-placement.md): Used for managing the placement of widgets in the Bitrix24 application.
+- [Slider Manager Class](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/frame-slider.md): Provides methods for working with sliders in the Bitrix24 application. It allows opening and closing sliders, as well as managing their content.
+- [BatchByChunkV2.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-by-chunk-rest-api-ver2.md): Method for executing batch requests with automatic chunking for any number of commands. Automatically splits large command sets into batches of 50 and executes them sequentially. Use only arrays of tuples or arrays of objects.
+- [BatchByChunkV3.make](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/batch-by-chunk-rest-api-ver3.md): Method for executing batch requests to Bitrix24 REST API version 3 with automatic chunking for any number of commands. Automatically splits large command sets into batches of 50 and executes them sequentially. Use only arrays of tuples or arrays of objects.
+- [Logger](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/logger.md): Logger inspired by PHP Monolog, provides a structured logging system with support for channels, handlers, processors, and formatters. Implementation follows PSR-3 principles and the chain of responsibility pattern.
+- [Telegram Handler](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/logger-telegram.md): Sending logs to Telegram
+- [Restrictions System](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/limiters.md): The restrictions system provides a comprehensive mechanism for managing request frequency, operation execution time, and adaptive delays.
+- [HealthCheck.make()](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/tools-health-check.md): Method for checking the availability of Bitrix24 REST API. Performs a simple request to the REST API to verify service health.
+- [Ping.make()](https://bitrix24.github.io/b24jssdk/raw/docs/working-with-the-rest-api/tools-ping.md): Method for measuring Bitrix24 REST API response speed. Performs a test request and returns response time in milliseconds.
+
+## Examples
+
+- [Examples](https://bitrix24.github.io/b24jssdk/raw/docs/examples.md): In this section we will post examples of using Bitrix24 JS SDK
+
+## Documentation Sets
+
+- [Bitrix24 JS SDK Full Documentation](https://bitrix24.github.io/b24jssdk/llms-full.txt): This is the full documentation for Bitrix24 JS SDK. It includes all the Markdown files written with the MDC syntax.
+
+## Notes
+
+- The content is automatically generated from the same source as the official documentation.
