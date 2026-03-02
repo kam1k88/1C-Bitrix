@@ -125,6 +125,16 @@ python bots/bot_manager.py
 └── main.py               # Главный API сервер
 ```
 
+## 🤖 GitHub Copilot + Bitrix24 MCP
+
+Проект настроен для работы с GitHub Copilot через Model Context Protocol (MCP):
+
+1. Откройте `.vscode/mcp.json` и нажмите **Start**
+2. В Copilot Chat выберите агента `@b24-dev-mcp`
+3. Copilot будет использовать контекст Bitrix24 API при генерации кода
+
+Подробнее: [docs/github_copilot_mcp_setup.md](docs/github_copilot_mcp_setup.md)
+
 ## 🧪 Тестирование и отладка
 
 ### Быстрая проверка системы
